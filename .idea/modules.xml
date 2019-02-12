@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/02_analysisfiles.iml" filepath="$PROJECT_DIR$/.idea/02_analysisfiles.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../../../../07_python_package/actiPy/.idea/actiPy.iml" filepath="$PROJECT_DIR$/../../../../07_python_package/actiPy/.idea/actiPy.iml" />
     </modules>
   </component>
 </project>
