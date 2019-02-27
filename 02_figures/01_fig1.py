@@ -18,7 +18,6 @@ import actiPy.preprocessing as prep
 import actiPy.actogram_plot as aplot
 
 # read in the data files
-
 file_dir = pathlib.Path("/Users/angusfisk/Documents/01_PhD_files/01_projects"
                         "/01_thesisdata/04_ageing"
                         "/01_datafiles/01_activity")
@@ -108,7 +107,7 @@ for condition, axis in zip(conditions_sorted, lower_axes):
 fig.set_size_inches(11.69, 8.27)
 
 save_name = save_dir / "01_fig1.png"
-plt.savefig(save_name, dpi=1200)
+plt.savefig(save_name, dpi=1000)
 
 # TODO add in month of september at the bottom
 
