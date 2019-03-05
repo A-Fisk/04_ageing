@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gs
 import matplotlib.dates as mdates
 import seaborn as sns
+sns.set()
 import sys
 sys.path.insert(0, "/Users/angusfisk/Documents/01_PhD_files/"
                     "07_python_package/actiPy")
@@ -27,6 +28,8 @@ file_dir = pathlib.Path("/Users/angusfisk/Documents/01_PhD_files/01_projects"
 save_dir = pathlib.Path("/Users/angusfisk/Documents/"
                         "01_PhD_files/01_projects/01_thesisdata/04_ageing/"
                         "03_analysisoutputs/01_figures")
+
+save_fig = save_dir / "02_fig2.png"
 
 files = sorted(file_dir.glob("*.csv"))
 file_names = [x.stem for x in files]
@@ -122,13 +125,12 @@ periodogram_power = all_df.groupby(level=[0]).apply(per.get_period,
 periodogram_power.columns = periodogram_power.columns.droplevel(1)
 power_vals = periodogram_power.groupby(level=0).max()
 power_vals.drop("LDR", axis=1, inplace=True)
-power_vals = longform_df(power_vals, col_names)
 
 # Calculate IS
 # get number of days and divide power_vals by that
 timespan = (df_list[0].index[-1] - df_list[0].index[0]).round("D").days
 interdaily_stab = power_vals / timespan
-interdaily_stab.drop("LDR", axis=1, inplace=True)
+power_vals = longform_df(power_vals, col_names)
 interdaily_stab = longform_df(interdaily_stab, col_names)
 
 # Calculate IV
@@ -152,6 +154,16 @@ sections = ["total", "first_week", "last_week"]
 alpha = 0.5
 light_alpha = 0.1
 mean_ylim = [0, 60]
+condition_col = col_names[0]
+animal_col = col_names[1]
+value_col = col_names[2]
+xfmt = mdates.DateFormatter("%H:%M:%S")
+interval = 3
+left_xlabel = "Circadian time (?) (Hrs)"
+fig_title = "Differences between groups when returned to LD"
+capsize = 5
+activity_title = "Total activity per day"
+mean_title = "mean activity over 24 hours"
 
 # plot them
 fig = plt.figure()
@@ -162,18 +174,23 @@ wave_axes = [plt.subplot(x) for x in wave_grid]
 
 # want to plot each condition as a separate row,
 # with the first and last weeks all on the same axis
-for condition, axis in zip(conditions, wave_axes):
-       # select the data
-    total_data = total_mean.loc[condition]
-    first_data = first_mean.loc[condition]
-    last_data = last_mean.loc[condition]
-
+data_dict = {
+    "total": total_mean,
+    "first": first_mean,
+    "last": last_mean
+}
+for data_label, axis in zip(data_dict.keys(), wave_axes):
+    
+    data = data_dict[data_label]
+    
     # plot the data +/- sem for each bit
-    for data, label in zip([total_data, first_data, last_data], sections):
-        mean_data = data.iloc[:, 0]
-        sem_data = data.iloc[:, 1]
-        axis.plot(mean_data, label=label)
-        axis.fill_between(data.index, (mean_data-sem_data),
+    for condition in conditions:
+        # select the data
+        curr_data = data.loc[condition]
+        mean_data = curr_data.iloc[:, 0]
+        sem_data = curr_data.iloc[:, 1]
+        axis.plot(mean_data, label=condition)
+        axis.fill_between(curr_data.index, (mean_data-sem_data),
                           (mean_data+sem_data), alpha=alpha)
         # plot the light as a background
         axis.fill_between(lights.index, 0, lights.values, alpha=light_alpha,
@@ -182,35 +199,68 @@ for condition, axis in zip(conditions, wave_axes):
     # fill in the background
     
     # tidy up titles and labels and limits
-    if condition == conditions[0]:
+    if data_label == list(data_dict.keys())[0]:
         axis.legend()
-    if condition != conditions[-1]:
+        axis.set(title=mean_title)
+    if data_label != list(data_dict.keys())[-1]:
         axis.set(xticklabels=[])
-    mean_xlim = [total_data.index[0], total_data.index[-1]]
-    axis.set(title=condition,
+    mean_xlim = [(curr_data.index[0] - pd.Timedelta("10M")), (curr_data.index[
+        -1])]
+    axis.set(ylabel=data_label,
              ylim=mean_ylim,
              xlim=mean_xlim)
+    axis.xaxis.set_major_formatter(xfmt)
+    axis.xaxis.set_major_locator(mdates.HourLocator(interval=interval))
+axis.set(xlabel=left_xlabel)
+
+# plot the change in total activity over time
+activity_grid = gs.GridSpec(nrows=1, ncols=1, figure=fig, left=0.55, top=0.45)
+activity_axes = [plt.subplot(x) for x in activity_grid]
+ac_axis = activity_axes[0]
+
+# get the values
+daily = all_df.groupby(level=0).resample("D", level=1).mean()
+daily.drop("LDR", axis=1, inplace=True)
+daily_mean = daily.mean(axis=1).unstack(level=0)
+daily_sem = daily.sem(axis=1).unstack(level=0)
+# plot on the axis
+for condition in daily_mean.columns:
+    mean = daily_mean.loc[:, condition]
+    sem = daily_sem.loc[:, condition]
+    ac_axis.errorbar(daily_mean.index, mean, yerr=sem, capsize=capsize,
+                     label=condition)
+ac_axis.legend()
+ac_axis.set(title=activity_title)
+
+fig.autofmt_xdate()
 
 # marker values subplotting area
-marker_grid = gs.GridSpec(nrows=3, ncols=1, figure=fig, left=0.55)
+marker_grid = gs.GridSpec(nrows=3, ncols=1, figure=fig, left=0.55, hspace=0,
+                          bottom=0.55)
 marker_axes = [plt.subplot(x) for x in marker_grid]
-
-# make pretty
-sns.set()
 
 # plot each marker on a separate row
 for marker_name, curr_axis in zip(marker_dict.keys(), marker_axes):
     
     curr_data = marker_dict[marker_name]
+    sns.boxplot(x=condition_col, y=value_col, data=curr_data,
+                ax=curr_axis, fliersize=0)
+    sns.stripplot(x=condition_col, y=value_col, data=curr_data,
+                  ax=curr_axis, dodge=True, color='k')
+    
+    # add in labels and tidy plot
+    curr_axis.set(ylabel=marker_name)
+    
+    # remove x values if not the bottom
+    if marker_name != list(marker_dict.keys())[-1]:
+        curr_axis.set(xlabel=[],
+                      xticklabels=[])
+curr_axis.set(xlabel="")
 
+fig.suptitle(fig_title)
 
-#  quick total per day
-# sum = setup_df.groupby(level=0).sum().stack(level=0
-#                 ).groupby(level=0).mean()
+fig.set_size_inches(11.69, 8.27)
 
-
-# TODO set x time format
-# TODO add in total activity/variance measures in remaining subplots
-
+plt.savefig(save_fig, dpi=600)
 
 plt.close('all')
