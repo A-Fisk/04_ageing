@@ -51,11 +51,13 @@ df_dict = dict(zip(file_names, df_list))
 all_df = pd.concat(df_dict, sort=False)
 all_df.drop("LDR", axis=1, inplace=True)
 
+exp_data = all_df.loc[idx[:, "2017-10-12":"2017-11-23"], :]
 
 ### Step 2 calculate length per day and count per day
-median_data = all_df.groupby(level=0).resample("D", level=1).median()
-bool_data = (all_df > 0).astype(bool)
+median_data = exp_data.groupby(level=0).resample("D", level=1).median()
+bool_data = (exp_data > 0).astype(bool)
 count_data = bool_data.groupby(level=0).resample("D", level=1).sum()
+count_data.replace(0, np.nan, inplace=True)
 
 median_cols = col_names.copy()
 median_cols[-1] = "median"
@@ -66,19 +68,33 @@ long_count = longform(count_data, count_cols)
 
 scatter_data = long_median.copy()
 scatter_data[count_cols[-1]] = long_count.iloc[:, -1]
-scatter_data.replace(0, np.nan, inplace=True)
 
-hist_data = longform(all_df, col_names=col_names)
+minutes = exp_data / 60
+hist_data = longform(minutes, col_names=col_names)
 
 ### Step 3 plot all
 
 # plotting constants
-conditions = all_df.index.get_level_values(0).unique()
+conditions = exp_data.index.get_level_values(0).unique()
 condition_col = col_names[0]
 day_col = col_names[1]
 animal_col = col_names[2]
 median_col = median_cols[-1]
 count_col = count_cols[-1]
+
+# histogram labels
+hist_xlabel = 'Episode duration (Minutes)'
+hist_ylabel = "Normalised Density"
+hist_title = "Distribution of Episode Duration"
+
+# kde constants
+kde_xlim = [0, 800]
+kde_ylim = [20, 70]
+kde_title = "Median length vs count of episodes per day"
+kde_xlabel = "Median episode length per day, (S)"
+kde_ylabel = "No. episodes / day"
+
+title = "Distribution of activity episodes after long term disruption"
 
 # Initialise the figure
 fig = plt.figure()
@@ -100,19 +116,48 @@ hist_axis.hist(hist_list, density=True, label=conditions)
 hist_axis.set_yscale('log')
 
 # tidy axis
+hist_axis.set(xlabel=hist_xlabel,
+              ylabel=hist_ylabel,
+              title=hist_title)
 hist_axis.legend()
 
 ####### KDE plot
 # create axis
-kde_grid = gs.GridSpec(nrows=1, ncols=1, figure=fig, left=0.55)
+kde_grid = gs.GridSpec(nrows=3, ncols=1, figure=fig, left=0.55,
+                       hspace=0)
 kde_axes_list = [plt.subplot(x) for x in kde_grid]
-kde_axis = kde_axes_list[0]
 
+# grab the data for stats
+median_data_list = []
+count_data_list = []
 # plot each condition
-for condition in conditions:
+for condition, kde_axis in zip(conditions, kde_axes_list):
     kde_data = scatter_data[scatter_data[condition_col] == condition]
-    sns.kdeplot(kde_data[count_col], kde_data[median_col], shade=True,
+    median_data = kde_data[median_col]
+    median_data_list.append(median_data)
+    count_data = kde_data[count_col]
+    count_data_list.append(count_data)
+    sns.kdeplot(median_data, count_data, shade=True,
                 shade_lowest=False, ax=kde_axis, label=condition)
-kde_axis.legend()
+    
+    # label with condition
+    kde_axis.text(1, 0.5, condition, rotation=270, color='k',
+                  transform=kde_axis.transAxes)
+    # tidy up axis
+    kde_axis.set(xlim=kde_ylim,
+                 ylim=kde_xlim,
+                 ylabel=kde_ylabel)
+    if condition != conditions[-1]:
+        kde_axis.set(xlabel=[],
+                     xticklabels="")
+    if condition == conditions[0]:
+        kde_axis.set(title=kde_title)
+kde_axis.set(xlabel=kde_xlabel)
+
+fig.suptitle(title)
+
+fig.set_size_inches(11.69, 8.27)
+
+plt.savefig(save_fig, dpi=600)
 
 plt.close('all')
