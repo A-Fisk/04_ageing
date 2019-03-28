@@ -4,33 +4,39 @@
 ### Imports
 import pathlib
 import pandas as pd
+
 idx = pd.IndexSlice
 import numpy as np
+import pingouin as pg
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gs
 import matplotlib.dates as mdates
 from matplotlib.lines import Line2D
 import seaborn as sns
+
 sns.set()
 import sys
+
 sys.path.insert(0, "/Users/angusfisk/Documents/01_PhD_files/"
-                    "07_python_package/actiPy")
+                   "07_python_package/actiPy")
 import actiPy.preprocessing as prep
 import actiPy.analysis as als
 import actiPy.periodogram as per
 import actiPy.waveform as wave
-
 
 ### CONSTANTS
 save_fig = pathlib.Path("/Users/angusfisk/Documents/"
                         "01_PhD_files/01_projects/01_thesisdata/04_ageing/"
                         "03_analysisoutputs/01_figures/03_fig3.png")
 col_names = ["condition", "day", "animal", "measure"]
+
+
 def longform(data, col_names):
     new_data = data.stack().reset_index()
     new_data.columns = col_names
     return new_data
+
 
 ### Step 1 Read in data
 file_dir = pathlib.Path("/Users/angusfisk/Documents/01_PhD_files/01_projects"
@@ -72,7 +78,48 @@ scatter_data[count_cols[-1]] = long_count.iloc[:, -1]
 minutes = exp_data / 60
 hist_data = longform(minutes, col_names=col_names)
 
-### Step 3 plot all
+#### Stats #####################################################################
+
+stats_colnames = ["Protocol", "Day", "Animal", "Value"]
+protocol_col = stats_colnames[0]
+day_col = stats_colnames[1]
+anim_col = stats_colnames[2]
+dep_var = stats_colnames[3]
+type_list = ["Median", "Count"]
+save_test_dir = pathlib.Path("/Users/angusfisk/Documents/01_PhD_files/"
+                             "01_projects/01_thesisdata/04_ageing/"
+                             "03_analysisoutputs/01_figures/00_csvs/03_fig3")
+anova_str = "01_anova.csv"
+ph_str = "02_posthoc.csv"
+
+# run on test and count data
+for test_df, test_label in zip([median_data, count_data], type_list):
+    print(test_label)
+    label_dir = save_test_dir / test_label
+    # tidy data
+    label_df = test_df.groupby(level=0
+                               ).apply(prep.label_anim_cols
+                                       ).stack().reset_index()
+    label_df.columns = stats_colnames
+
+    # run rm anova
+    anova = pg.mixed_anova(dv=dep_var,
+                           within=day_col,
+                           between=protocol_col,
+                           subject=anim_col,
+                           data=label_df)
+    pg.print_table(anova)
+
+    # run post hoc
+    ph_df = prep.tukey_pairwise_ph(label_df,
+                                   hour_col=day_col)
+
+    # save files
+    anova.to_csv((label_dir / anova_str))
+    ph_df.to_csv((label_dir / ph_str))
+
+
+### Step 3 plot all ############################################################
 
 # plotting constants
 conditions = exp_data.index.get_level_values(0).unique()
@@ -159,5 +206,3 @@ fig.suptitle(title)
 fig.set_size_inches(11.69, 8.27)
 
 plt.savefig(save_fig, dpi=600)
-
-plt.close('all')
