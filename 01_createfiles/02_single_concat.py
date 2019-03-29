@@ -32,6 +32,8 @@ for file_str in protocol_names:
     sorted_df = grouped_df.groupby(level=0
                                    ).resample("10S", level=1
                                    ).mean().sort_index(level=1)
+    # resampling puts in na values, backfill them
+    sorted_df.fillna(method="bfill", inplace=True)
     # put LDR as the final col
     ldr_col = sorted_df.pop("LDR")
     sorted_df["LDR"] = ldr_col
