@@ -6,6 +6,7 @@ import pathlib
 import pandas as pd
 import numpy as np
 import matplotlib
+matplotlib.use('macosx')
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gs
 import matplotlib.dates as mdates
@@ -18,24 +19,36 @@ import actiPy.preprocessing as prep
 import actiPy.actogram_plot as aplot
 
 # read in the data files
-file_dir = pathlib.Path("/Users/angusfisk/Documents/01_PhD_files/01_projects"
-                        "/01_thesisdata/04_ageing"
-                        "/01_datafiles/01_activity")
-save_dir = pathlib.Path("/Users/angusfisk/Documents/"
-                        "01_PhD_files/01_projects/01_thesisdata/04_ageing/"
-                        "03_analysisoutputs/01_figures")
+file_dir = pathlib.Path(
+    "/Users/angusfisk/Documents/01_PhD_files/01_projects"
+    "/01_thesisdata/04_ageing"
+    "/01_datafiles/01_activity"
+)
+save_dir = pathlib.Path(
+    "/Users/angusfisk/Documents/"
+    "01_PhD_files/01_projects/01_thesisdata/04_ageing/"
+    "03_analysisoutputs/01_figures"
+)
 
 files = sorted(file_dir.glob("*.csv"))
-
-file_names = [x.stem for x in files]
+file_names = [x.stem.upper() for x in files]
 df_list = [prep.read_file_to_df(x, index_col=0) for x in files]
-
 df_dict = dict(zip(file_names, df_list))
-
 all_df = pd.concat(df_dict, sort=False)
 
+post_file_dir = pathlib.Path(
+    "/Users/angusfisk/Documents/01_PhD_files/01_projects"
+    "/01_thesisdata/04_ageing"
+    "/01_datafiles/01_activity/01_post_disrupt"
+)
+post_files = sorted(post_file_dir.glob("*.csv"))
+post_file_names = [x.stem.upper() for x in post_files]
+post_list = [prep.read_file_to_df(x, index_col=0) for x in files]
+post_dict = dict(zip(post_file_names, post_list))
+post_df = pd.concat(post_dict, sort=False)
+
 # resample so can actually work with this data
-all_df_h = all_df.groupby(level=0).resample("H", level=1).mean()
+# all_df_h = all_df.groupby(level=0).resample("H", level=1).mean()
 
 # for each condition, plot an actogram
 # doing three actograms as given amount of data want to be as big as possible
@@ -55,6 +68,9 @@ actogram_kwargs = {
     "drop_level": False,
     "set_file_title": False,
     "linewidth": 0.1,
+    "day_label_size": 8,
+    "ylabelpos": (0.1, 0.5),
+    "xlabelpos": (0.5, 0.1)
 }
 
 # plot actograms. Whole year with last month zoomed in at the bottom
@@ -79,9 +95,14 @@ for condition, axis in zip(conditions_sorted, upper_axes):
              xticks=[],
              title=condition)
     
-    aplot._actogram_plot_from_df(data, animal, fig=fig, subplot=axis,
-                                 timeaxis=False,
-                                 **actogram_kwargs)
+    aplot._actogram_plot_from_df(
+        data,
+        animal,
+        fig=fig,
+        subplot=axis,
+        timeaxis=False,
+        **actogram_kwargs
+    )
  
 # create three lower axes for the zoomed in actograms
 lower_grid = gs.GridSpec(nrows=1, ncols=len(conditions), figure=fig,
@@ -92,7 +113,7 @@ lower_axes = [plt.subplot(x) for x in lower_grid]
 for condition, axis in zip(conditions_sorted, lower_axes):
     
     # select the data and the label
-    data = all_df.loc[condition]
+    data = post_df.loc[condition]
     month_data = data.loc[month_str]
     animal = anim_dict[condition]
     
@@ -100,14 +121,20 @@ for condition, axis in zip(conditions_sorted, lower_axes):
     axis.set(yticks=[],
              xticks=[])
     
-    aplot._actogram_plot_from_df(month_data, animal, fig=fig, subplot=axis,
-                                 start_day=start_day, **actogram_kwargs)
+    aplot._actogram_plot_from_df(
+        month_data,
+        animal,
+        fig=fig,
+        subplot=axis,
+        start_day=start_day,
+        **actogram_kwargs
+    )
  
 # tidy up the figure
 fig.set_size_inches(11.69, 8.27)
 
 save_name = save_dir / "01_fig1.png"
-plt.savefig(save_name, dpi=1000)
+plt.savefig(save_name, dpi=600)
 
 # TODO add in month of september at the bottom
 
