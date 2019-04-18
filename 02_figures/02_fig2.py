@@ -1,4 +1,4 @@
-# Figure 2 of the ageing project. Mean waveforms over the entire year
+#, Figure 2 of the ageing project. Mean waveforms over the entire year
 # with first and last month in the background?
 
 # imports
@@ -130,15 +130,7 @@ light_act = all_df.groupby(
 )
 light_act_long = longform_df(light_act.iloc[:, :-1], col_names)
 
-# Calculate Relative Amplitude on hourly
-all_df_hourly = all_df.groupby(
-    level=0
-).resample(
-    "H",
-    level=1
-).mean()
-
-
+# Calculate Relative Amplitude on hourly daily mean
 def split_in_groupby(test_df, **kwargs):
     curr_split_dict = {}
     for animal_no, animal_label in enumerate(test_df.columns):
@@ -162,34 +154,14 @@ split_df_hourly = split_df.groupby(
     level=[0, 1]
 ).resample(
     "H",
-    level=2
+    level=2,
+    loffset=pd.Timedelta("30M")
 ).mean()
 split_daily_mean = split_df_hourly.mean(axis=1)
+split_daily_tidy = split_daily_mean.unstack(level=1)
+split_daily_calc = split_daily_tidy.drop("LDR", axis=1)
 
-
-hours = ["%s:00:00" %(x) for x in range(24)]
-def hourly_mean(test_df,
-                hour_list: list,
-                index_to_drop: int=0):
-    new_test_df = test_df.copy()
-    new_test_df.index = new_test_df.index.droplevel(index_to_drop)
-    hour_dict = {}
-    for hour in hour_list:
-        curr_hour_mean = new_test_df.at_time("%s" %(hour)).mean()
-        hour_index = pd.to_datetime(("2018-01-01 %s" %(hour)))
-        hour_dict[hour_index] = curr_hour_mean
-    hour_mean_df = pd.concat(hour_dict).unstack(level=-1)
-    
-    return hour_mean_df
-
-day_mean = all_df_hourly.groupby(
-    level=0
-).apply(
-    hourly_mean,
-    hours
-)
-day_mean_calc = day_mean.iloc[:, :-1]
-rel_amp = day_mean_calc.groupby(
+rel_amp = split_daily_calc.groupby(
     level=0
 ).apply(
     als.relative_amplitude
@@ -212,9 +184,9 @@ tot_act_long = longform_df(tot_act, col_names)
 
 # Bring together in a collection
 marker_dict = {
-    "IV": iv_long,
+    "Intradaily Variability": iv_long,
     "Power": power_long,
-    "IS": is_long,
+    "Interdaily Stability": is_long,
     "Lightphase activity": light_act_long,
     "Relative amplitude": rel_amp_long,
     "Total activity": tot_act_long
@@ -471,12 +443,13 @@ for marker, curr_ax_marker in zip(marker_dict.keys(), marker_axes):
     curr_ax_marker.set_ylabel(marker, fontsize=ylabel_size)
     curr_ax_marker.ticklabel_format(
         axis='y',
-        scilimits=(-1, 2)
+        scilimits=(-2, 2)
     )
     if marker != list(marker_dict.keys())[-1]:
         curr_ax_marker.set_xticklabels("")
         curr_ax_marker.set_xlabel("")
     
+fig.align_ylabels(marker_axes)
 marker_axes[0].text(
     0.5,
     1.1,
@@ -501,45 +474,37 @@ curr_axis_wave = wave_axes[0]
 
 # Tidy wave constants
 wave_alpha = 0.5
-ldr_label = "LDR"
-lights = day_mean.loc[conditions[0], ldr_label].copy()
-lights[lights > 100] = 500
-lights[lights < 100] = 0
-lights = 500 - lights
-lights_alpha = 0.5
-min30 = pd.Timedelta("30M")
+dark_index = pd.DatetimeIndex(
+    start="2010-01-01 12:00:00",
+    end='2010-01-02 02:00:00',
+    freq="H"
+)
+start_index = pd.Timestamp("2010-01-01 00:00:00")
+end_index = pd.Timestamp("2010-01-02 00:00:00")
 xfmt = mdates.DateFormatter("%H:%M")
-shift_amount = 4
+fontsize_time = 8
 
 for condition in conditions:
-    curr_data_wave = day_mean_calc.loc[condition]
-    # swap around so at zt = 0 start
-    start_wave = curr_data_wave.iloc[:shift_amount].values
-    shifted_wave = curr_data_wave.shift(-shift_amount)
-    shifted_wave.iloc[-shift_amount:] = start_wave
-
-    curr_data_mean = shifted_wave.mean(axis=1)
-    curr_data_sem = shifted_wave.sem(axis=1)
+    curr_data_wave = split_daily_calc.loc[condition]
+    curr_data_mean = curr_data_wave.mean(axis=1)
+    curr_data_sem = curr_data_wave.sem(axis=1)
     
-    shifted_wave_times = [x + min30 for x in curr_data_wave.index]
     
     curr_axis_wave.plot(
-        shifted_wave_times,
-        curr_data_mean
+        curr_data_wave.index,
+        curr_data_mean,
+        label=condition
     )
     curr_axis_wave.fill_between(
-        shifted_wave_times,
+        curr_data_wave.index,
         curr_data_mean - curr_data_sem,
         curr_data_mean + curr_data_sem,
         alpha=wave_alpha
     )
     
-lights_shifted = lights.shift(-shift_amount)
-lights_shifted.iloc[-shift_amount:] = lights.iloc[:shift_amount].values
-lights_shifted.loc["2018-01-02"] = 500
 curr_axis_wave.fill_between(
-    lights_shifted.index,
-    lights_shifted,
+    dark_index,
+    500,
     alpha=lights_alpha
 )
 
@@ -547,9 +512,13 @@ curr_axis_wave.fill_between(
 curr_axis_wave.xaxis.set_major_formatter(xfmt)
 curr_axis_wave.set_ylim([0, 60])
 curr_axis_wave.set_xlim(
-    lights.index[0],
-    lights.index[0] + pd.Timedelta("1D")
+    start_index,
+    end_index
 )
+for label in curr_axis_wave.get_xticklabels():
+    label.set_ha('right')
+    label.set_rotation(30)
+    label.set_fontsize(fontsize_time)
 curr_axis_wave.set_xlabel(
     "Time, ZT, Hours"
 )
@@ -561,7 +530,7 @@ curr_axis_wave.set_title(
 )
 
 
-# Plot total activity per day
+######## Plot total activity per day
 total_grid = gs.GridSpec(
     nrows=1,
     ncols=1,
@@ -575,9 +544,11 @@ curr_axis_total = total_axes[0]
 
 # Tidy total plot constants
 bins_per_day = 8640
+capsize_totals = 5
 
 for condition in conditions:
-    curr_data_total = tot_act_days.loc[condition] / bins_per_day
+    curr_data_total = tot_act_days.loc[condition]
+    curr_data_total = curr_data_total.iloc[1:].copy()
     curr_tot_mean = curr_data_total.mean(axis=1)
     curr_tot_sem = curr_data_total.sem(axis=1)
     
@@ -585,10 +556,42 @@ for condition in conditions:
         curr_data_total.index,
         curr_tot_mean,
         yerr=curr_tot_sem,
-        capsize=capsize
+        capsize=capsize_totals
     )
 
-fig.align_labels()
+# Tidy axes
+curr_axis_total.set_xlim(
+    curr_data_total.index[0] - pd.Timedelta('1D'),
+    curr_data_total.index[-1] + pd.Timedelta("1D")
+)
+total_xticks = curr_data_total.index[::4]
+total_xticklabels = [(x - total_xticks[0]).days for x in total_xticks]
+curr_axis_total.set_xticks(total_xticks)
+curr_axis_total.set_xticklabels(total_xticklabels)
+curr_axis_total.ticklabel_format(
+    axis='y',
+    scilimits=(0, 0)
+)
+curr_axis_total.set_xlabel(
+    "Days"
+)
+curr_axis_total.set_ylabel(
+    "Daily Activity, au"
+)
+
+# add in final touches to the figure
+handles, labels = curr_axis_wave.get_legend_handles_labels()
+fig.legend(
+    handles=handles,
+    loc=(0.9, 0.82),
+    fontsize=10,
+    markerscale=0.5
+)
+
+fig.suptitle(
+    "Group Housed Circadian Parameters"
+)
+
 fig.set_size_inches(11.69, 8.27)
 
 plt.savefig(save_fig, dpi=600)
