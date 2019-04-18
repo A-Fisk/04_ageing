@@ -14,8 +14,11 @@ import matplotlib.dates as mdates
 import seaborn as sns
 sns.set()
 import sys
-sys.path.insert(0, "/Users/angusfisk/Documents/01_PhD_files/"
-                    "07_python_package/actiPy")
+sys.path.insert(
+    0,
+    "/Users/angusfisk/Documents/01_PhD_files/"
+    "07_python_package/actiPy"
+)
 import actiPy.preprocessing as prep
 import actiPy.actogram_plot as aplot
 import actiPy.periodogram as per
@@ -23,12 +26,16 @@ import actiPy.analysis as als
 
 ##################
 # import the files
-file_dir = pathlib.Path("/Users/angusfisk/Documents/01_PhD_files/01_projects"
-                        "/01_thesisdata/04_ageing"
-                        "/01_datafiles/01_activity/01_post_disrupt")
-save_dir = pathlib.Path("/Users/angusfisk/Documents/"
-                        "01_PhD_files/01_projects/01_thesisdata/04_ageing/"
-                        "03_analysisoutputs/01_figures")
+file_dir = pathlib.Path(
+    "/Users/angusfisk/Documents/01_PhD_files/01_projects"
+    "/01_thesisdata/04_ageing"
+    "/01_datafiles/01_activity/01_post_disrupt"
+)
+save_dir = pathlib.Path(
+    "/Users/angusfisk/Documents/"
+    "01_PhD_files/01_projects/01_thesisdata/04_ageing/"
+    "03_analysisoutputs/01_figures"
+)
 
 save_fig = save_dir / "02_fig2.png"
 
@@ -44,6 +51,122 @@ df_list[-1] = sj_df
 df_dict = dict(zip(file_names, df_list))
 all_df = pd.concat(df_dict, sort=False)
 
+# constants
+conditions = all_df.index.get_level_values(0).unique()
+
+# remove the first 14 days so all re-entrained
+time_remove_start = pd.Timedelta("14D")
+all_df = all_df.loc[
+    idx[:, (all_df.loc["dlan_post"].index[0] + time_remove_start):],
+    :
+]
+
+############ Calculate Markers  ################################################
+
+col_names = ["condition", "animal", "value"]
+calc_df = all_df.loc[:, :"PIR6"]
+def longform_df(data, col_names):
+    new_data = data.stack().reset_index()
+    new_data.columns = col_names
+    return new_data
+
+
+# Calculate LS Periodogram power
+periodogram_power = calc_df.groupby(
+    level=[0]
+).apply(
+    per.get_period,
+    return_power=True,
+    return_periods=False,
+    drop_lastcol=False
+)
+# tidy output to get values
+periodogram_power.columns = periodogram_power.columns.droplevel(1)
+power_vals = periodogram_power.groupby(level=0).max()
+power_long = longform_df(power_vals, col_names)
+
+
+# Calculate IS
+# get number of days and divide power_vals by that
+timespan = (
+    calc_df.loc[conditions[0]].index[-1] -
+    calc_df.loc[conditions[0]].index[0]
+).round("D").days
+interdaily_stab = power_vals / timespan
+is_long = longform_df(interdaily_stab, col_names)
+
+
+# Calculate IV
+intraday_var = als.intradayvar(calc_df, level=[0])
+iv_long = longform_df(intraday_var, col_names)
+
+
+# Calculate Lightphase Activity
+light_act = all_df.groupby(
+    level=0
+).apply(
+    als.light_phase_activity_nfreerun
+)
+
+
+# Calculate Relative Amplitude on hourly
+calc_df_hourly = calc_df.groupby(
+    level=0
+).resample(
+    "H",
+    level=1
+).mean()
+
+hours = ["%s:00:00" %(x) for x in range(24)]
+def hourly_mean(test_df,
+                hour_list: list,
+                index_to_drop: int=0):
+    new_test_df = test_df.copy()
+    new_test_df.index = new_test_df.index.droplevel(index_to_drop)
+    hour_dict = {}
+    for hour in hour_list:
+        curr_hour_mean = new_test_df.at_time("%s" %(hour)).mean()
+        hour_index = pd.to_datetime(("2018-01-01 %s" %(hour)))
+        hour_dict[hour_index] = curr_hour_mean
+    hour_mean_df = pd.concat(hour_dict).unstack(level=-1)
+    
+    return hour_mean_df
+
+day_mean = calc_df_hourly.groupby(
+    level=0
+).apply(
+    hourly_mean,
+    hours
+)
+rel_amp = day_mean.groupby(
+    level=0
+).apply(
+    als.relative_amplitude
+)
+
+
+# Calculate total activity per day
+tot_act = calc_df.groupby(
+    level=0
+).resample(
+    "D",
+    level=1
+).sum()
+
+# put together in a list
+marker_dict = {
+    "Qp": power_long,
+    "IS": is_long,
+    "IV": iv_long
+}
+
+# Values for total activity per day ############################################
+
+# get the values
+daily = all_df.groupby(level=0).resample("D", level=1).mean()
+daily.drop("LDR", axis=1, inplace=True)
+daily_mean = daily.mean(axis=1).unstack(level=0)
+daily_sem = daily.sem(axis=1).unstack(level=0)
 ################################################################################
 # compute the mean waveforms
 
@@ -110,49 +233,7 @@ lights = light_df.where(light_mask, other=500)
 lights = lights.mask(light_mask, other=0)
 lights = lights.mean(axis=1)
 
-############ Calculate Qp IS IV ################################################
 
-col_names = ["condition", "animal", "value"]
-def longform_df(data, col_names):
-    new_data = data.stack().reset_index()
-    new_data.columns = col_names
-    return new_data
-
-# Calculate Qp
-periodogram_power = all_df.groupby(level=[0]).apply(per.get_period,
-                                                    return_power=True,
-                                                    drop_lastcol=False)
-# tidy output to get values
-periodogram_power.columns = periodogram_power.columns.droplevel(1)
-power_vals = periodogram_power.groupby(level=0).max()
-power_vals.drop("LDR", axis=1, inplace=True)
-
-# Calculate IS
-# get number of days and divide power_vals by that
-timespan = (df_list[0].index[-1] - df_list[0].index[0]).round("D").days
-interdaily_stab = power_vals / timespan
-long_power_vals = longform_df(power_vals, col_names)
-long_interdaily_stab = longform_df(interdaily_stab, col_names)
-
-# Calculate IV
-intraday_var = als.intradayvar(all_df, level=[0])
-intraday_var.drop("LDR", axis=1, inplace=True)
-long_intraday_var = longform_df(intraday_var, col_names)
-
-# put together in a list
-marker_dict = {
-    "Qp": long_power_vals,
-    "IS": long_interdaily_stab,
-    "IV": long_intraday_var
-}
-
-# Values for total activity per day ############################################
-
-# get the values
-daily = all_df.groupby(level=0).resample("D", level=1).mean()
-daily.drop("LDR", axis=1, inplace=True)
-daily_mean = daily.mean(axis=1).unstack(level=0)
-daily_sem = daily.sem(axis=1).unstack(level=0)
 
 
 ################################################################################
@@ -276,6 +357,37 @@ mean_title = "mean activity over 24 hours"
 
 # plot them
 fig = plt.figure()
+
+
+# plot markers
+marker_grid = gs.GridSpec(
+    nrows=len(marker_dict),
+    ncols=1,
+    fig=fig,
+    right=0.45
+)
+marker_axes = [plt.subplot(x) for x in marker_grid]
+
+# constants
+dep_var = col_names[-1]
+condition_col = col_names[0]
+anim_col = col_names[1]
+
+for marker, curr_ax_marker in zip(marker_dict.keys(), marker_axes):
+    
+    curr_marker_df = marker_dict[marker]
+    
+    sns.pointplot(
+        x
+    )
+
+
+
+
+
+
+
+
 
 # create the subplots for the mean waveforms
 wave_grid = gs.GridSpec(nrows=len(conditions), ncols=1, figure=fig, right=0.45)
