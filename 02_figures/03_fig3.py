@@ -26,10 +26,12 @@ import actiPy.periodogram as per
 import actiPy.waveform as wave
 
 ### CONSTANTS
-save_fig = pathlib.Path("/Users/angusfisk/Documents/"
-                        "01_PhD_files/01_projects/01_thesisdata/04_ageing/"
-                        "03_analysisoutputs/01_figures/03_fig3.png")
-col_names = ["condition", "day", "animal", "measure"]
+save_fig = pathlib.Path(
+    "/Users/angusfisk/Documents/"
+    "01_PhD_files/01_projects/01_thesisdata/04_ageing/"
+    "03_analysisoutputs/01_figures/03_fig3.png"
+)
+col_names = ["Condition", "Day", "Animal", "Measure"]
 
 
 def longform(data, col_names):
@@ -39,12 +41,14 @@ def longform(data, col_names):
 
 
 ### Step 1 Read in data
-file_dir = pathlib.Path("/Users/angusfisk/Documents/01_PhD_files/01_projects"
-                        "/01_thesisdata/04_ageing"
-                        "/01_datafiles/01_activity/02_episodes")
+file_dir = pathlib.Path(
+    "/Users/angusfisk/Documents/01_PhD_files/01_projects"
+    "/01_thesisdata/04_ageing"
+    "/01_datafiles/01_activity/02_episodes"
+)
 
 files = sorted(file_dir.glob("*.csv"))
-file_names = [x.stem for x in files]
+file_names = [x.stem[:-5].upper() for x in files]
 df_list = [prep.read_file_to_df(x, index_col=0) for x in files]
 
 # hack to remove SJ PIR 1 and 2
@@ -55,69 +59,135 @@ df_list[-1] = sj_df
 # gather into a df
 df_dict = dict(zip(file_names, df_list))
 all_df = pd.concat(df_dict, sort=False)
-all_df.drop("LDR", axis=1, inplace=True)
+# all_df.drop("LDR", axis=1, inplace=True)
 
-exp_data = all_df.loc[idx[:, "2017-10-12":"2017-11-23"], :]
+# find lights on
+all_lights_on = all_df[all_df.loc[:, "LDR"] > 100]
+dlan_lights_on = all_lights_on.loc["DLAN"].first_valid_index()
+sj_lights_on = all_lights_on.loc["SJ"].first_valid_index()
+ld_lights_on = all_lights_on.loc["LD"].first_valid_index()
+# shift start to the first lights on
+exp_data = all_df.loc[
+    idx[:, dlan_lights_on.round("T"):"2019"],
+    :"PIR6"
+]
+
+# import the LD and DD singly housed data as well
+single_dir = file_dir.parent / "03_single_housed/02_episodes"
+files_single = sorted(single_dir.glob("*.csv"))
+names_single = [x.stem.upper() for x in files_single]
+df_list_single = [
+    prep.read_file_to_df(x, index_col=[0, 1]) for x in files_single
+]
+df_dict_single = dict(zip(names_single, df_list_single))
+all_df_single = pd.concat(df_dict_single, sort=False)
+exp_data_ld = all_df_single.loc[idx[:, "ld", :],  :"12"]
+exp_data_ld.index = exp_data_ld.index.droplevel(1)
+exp_data_dd = all_df_single.loc[idx[:, "dd", :], :"12"]
+exp_data_dd.index = exp_data_dd.index.droplevel(1)
+
+
+all_data_dict = {
+    "Group_housed": exp_data,
+    "Single LD": exp_data_ld,
+    "Single DD": exp_data_dd
+}
 
 ### Step 2 calculate length per day and count per day
-median_data = exp_data.groupby(level=0).resample("D", level=1).median()
-bool_data = (exp_data > 0).astype(bool)
-count_data = bool_data.groupby(level=0).resample("D", level=1).sum()
-count_data.replace(0, np.nan, inplace=True)
+# Get the number and mean duration for each day then take the mean for each
+# animal
+mean_data_dict = {}
+count_data_dict = {}
+hist_data_dict = {}
+mean_cols = [col_names[0], col_names[2], col_names[3]]
+mean_cols[-1] = "Mean"
+count_cols = [col_names[0], col_names[2], col_names[3]]
+count_cols[-1] = "Count"
+bins = [(x*60) for x in [0, 1, 10, 60, 600000000]]
+hist_bin_cols = ["0-1", "1-10", "10-60", ">60"]
+hist_cols = [
+    col_names[0],
+    col_names[2],
+    "Episode Duration",
+    "Number of Episodes"
+]
 
-median_cols = col_names.copy()
-median_cols[-1] = "median"
-long_median = longform(median_data, median_cols)
-count_cols = col_names.copy()
-count_cols[-1] = "count"
-long_count = longform(count_data, count_cols)
+for data_type_curr, exp_data_curr in zip(all_data_dict.keys(),
+                                         all_data_dict.values()):
+    mean_inday_data = exp_data_curr.groupby(
+        level=0
+    ).resample(
+        "D",
+        level=1
+    ).mean()
+    mean_data = mean_inday_data.groupby(level=0).mean()
+    
+    bool_data = (exp_data_curr > 0).astype(bool)
+    count_inday_data = bool_data.groupby(level=0).resample("D", level=1).sum()
+    count_inday_data.replace(0, np.nan, inplace=True)
+    count_data = count_inday_data.groupby(level=0).mean()
 
-scatter_data = long_median.copy()
-scatter_data[count_cols[-1]] = long_count.iloc[:, -1]
+    long_mean = longform(mean_data, mean_cols)
+    long_count = longform(count_data, count_cols)
 
-minutes = exp_data / 60
-hist_data = longform(minutes, col_names=col_names)
+    # Calculate histogram data
+    hist_input = exp_data_curr.stack().reorder_levels([0, 2, 1])
+    hist_anim_data = hist_input.groupby(
+        level=[0, 1]
+    ).apply(
+        als.hist_vals,
+        bins,
+        hist_bin_cols
+    ).unstack()
+    hist_anim_data.columns = hist_anim_data.columns.droplevel(0)
 
-#### Stats #####################################################################
+    long_hist = longform(hist_anim_data, col_names=hist_cols)
 
-stats_colnames = ["Protocol", "Day", "Animal", "Value"]
-protocol_col = stats_colnames[0]
-day_col = stats_colnames[1]
-anim_col = stats_colnames[2]
-dep_var = stats_colnames[3]
-type_list = ["Median", "Count"]
-save_test_dir = pathlib.Path("/Users/angusfisk/Documents/01_PhD_files/"
-                             "01_projects/01_thesisdata/04_ageing/"
-                             "03_analysisoutputs/01_figures/00_csvs/03_fig3")
-anova_str = "01_anova.csv"
-ph_str = "02_posthoc.csv"
-
-# run on test and count data
-for test_df, test_label in zip([median_data, count_data], type_list):
-    print(test_label)
-    label_dir = save_test_dir / test_label
-    # tidy data
-    label_df = test_df.groupby(level=0
-                               ).apply(prep.label_anim_cols
-                                       ).stack().reset_index()
-    label_df.columns = stats_colnames
-
-    # run rm anova
-    anova = pg.mixed_anova(dv=dep_var,
-                           within=day_col,
-                           between=protocol_col,
-                           subject=anim_col,
-                           data=label_df)
-    pg.print_table(anova)
-
-    # run post hoc
-    ph_df = prep.tukey_pairwise_ph(label_df,
-                                   hour_col=day_col)
-
-    # save files
-    anova.to_csv((label_dir / anova_str))
-    ph_df.to_csv((label_dir / ph_str))
-
+    mean_data_dict[data_type_curr] = long_mean
+    count_data_dict[data_type_curr] = long_count
+    hist_data_dict[data_type_curr] = long_hist
+    
+    
+# #### Stats #####################################################################
+#
+# stats_colnames = ["Protocol", "Day", "Animal", "Value"]
+# protocol_col = stats_colnames[0]
+# day_col = stats_colnames[1]
+# anim_col = stats_colnames[2]
+# dep_var = stats_colnames[3]
+# type_list = ["Median", "Count"]
+# save_test_dir = pathlib.Path("/Users/angusfisk/Documents/01_PhD_files/"
+#                              "01_projects/01_thesisdata/04_ageing/"
+#                              "03_analysisoutputs/01_figures/00_csvs/03_fig3")
+# anova_str = "01_anova.csv"
+# ph_str = "02_posthoc.csv"
+#
+# # run on test and count data
+# for test_df, test_label in zip([mean_data, count_data], type_list):
+#     print(test_label)
+#     label_dir = save_test_dir / test_label
+#     # tidy data
+#     label_df = test_df.groupby(level=0
+#                                ).apply(prep.label_anim_cols
+#                                        ).stack().reset_index()
+#     label_df.columns = stats_colnames
+#
+#     # run rm anova
+#     anova = pg.mixed_anova(dv=dep_var,
+#                            within=day_col,
+#                            between=protocol_col,
+#                            subject=anim_col,
+#                            data=label_df)
+#     pg.print_table(anova)
+#
+#     # run post hoc
+#     ph_df = prep.tukey_pairwise_ph(label_df,
+#                                    hour_col=day_col)
+#
+#     # save files
+#     anova.to_csv((label_dir / anova_str))
+#     ph_df.to_csv((label_dir / ph_str))
+#
 
 ### Step 3 plot all ############################################################
 
@@ -126,83 +196,120 @@ conditions = exp_data.index.get_level_values(0).unique()
 condition_col = col_names[0]
 day_col = col_names[1]
 animal_col = col_names[2]
-median_col = median_cols[-1]
+mean_col = mean_cols[-1]
 count_col = count_cols[-1]
 
-# histogram labels
-hist_xlabel = 'Episode duration (Minutes)'
-hist_ylabel = "Normalised Density"
-hist_title = "Distribution of Episode Duration"
-
-# kde constants
-kde_xlim = [0, 800]
-kde_ylim = [20, 70]
-kde_title = "Median length vs count of episodes per day"
-kde_xlabel = "Median episode length per day, (S)"
-kde_ylabel = "No. episodes / day"
-
-title = "Distribution of activity episodes after long term disruption"
 
 # Initialise the figure
 fig = plt.figure()
 
+###### Frag columns
+frag_grid = gs.GridSpec(
+    nrows=2,
+    ncols=3,
+    figure=fig,
+    bottom=0.55
+)
+frag_axes = [plt.subplot(x) for x in frag_grid]
+count_axes_dict = dict(zip(all_data_dict.keys(), frag_axes[:3]))
+mean_axes_dict = dict(zip(all_data_dict.keys(), frag_axes[3:]))
+frag_axes_dict = {
+    count_col: count_axes_dict,
+    mean_col: mean_axes_dict
+}
+frag_data_dict = {
+    count_col: count_data_dict,
+    mean_col: mean_data_dict
+}
+
+# plot count and mean duration
+# Tidy constants for frag
+capsize = 0.2
+errwidth = 1
+sem = 68
+marker_size = 3
+
+# loop through each data type
+for curr_data_group in all_data_dict.keys():
+    # loop through count and mean
+    for curr_frag_type in frag_axes_dict.keys():
+        
+        curr_axis_frag = frag_axes_dict[curr_frag_type][curr_data_group]
+        curr_data_frag = frag_data_dict[curr_frag_type][curr_data_group]
+        
+        sns.pointplot(
+            x=condition_col,
+            y=curr_frag_type,
+            hue=condition_col,
+            data=curr_data_frag,
+            ax=curr_axis_frag,
+            join=False,
+            capsize=capsize,
+            errwidth=errwidth,
+            ci=sem
+        )
+        sns.swarmplot(
+            x=condition_col,
+            y=curr_frag_type,
+            color='k',
+            data=curr_data_frag,
+            ax=curr_axis_frag,
+            size=marker_size
+        )
+        
+        curr_frag_leg = curr_axis_frag.legend()
+        curr_frag_leg.remove()
+
+
 ###### Histogram plot
 # create histogram axis - singular
-hist_grid = gs.GridSpec(nrows=1, ncols=1, figure=fig, right=0.5)
-hist_axes_list = [plt.subplot(x) for x in hist_grid]
+hist_grid = gs.GridSpec(
+    nrows=1,
+    ncols=3,
+    figure=fig,
+    top=0.45
+)
+hist_axes = [plt.subplot(x) for x in hist_grid]
 
-# tidy data into list of arrays
-hist_list = []
-for condition in conditions:
-    condition_data = hist_data[hist_data[condition_col] == condition]
-    hist_list.append(condition_data[col_names[-1]])
+# constants for histogram plotting
+duration_col = hist_cols[-2]
+no_ep_col = hist_cols[-1]
 
-# plot on axis
-hist_axis = hist_axes_list[0]
-hist_axis.hist(hist_list, density=True, label=conditions)
-hist_axis.set_yscale('log')
+dodge = 0.5
 
-# tidy axis
-hist_axis.set(xlabel=hist_xlabel,
-              ylabel=hist_ylabel,
-              title=hist_title)
-hist_axis.legend()
+# loop through each data type for each column.
+# Each condition = hue
 
-####### KDE plot
-# create axis
-kde_grid = gs.GridSpec(nrows=3, ncols=1, figure=fig, left=0.55,
-                       hspace=0)
-kde_axes_list = [plt.subplot(x) for x in kde_grid]
+for data_type_curr, curr_axis_hist in zip(all_data_dict.keys(), hist_axes):
+    curr_data_hist = hist_data_dict[data_type_curr]
 
-# grab the data for stats
-median_data_list = []
-count_data_list = []
-# plot each condition
-for condition, kde_axis in zip(conditions, kde_axes_list):
-    kde_data = scatter_data[scatter_data[condition_col] == condition]
-    median_data = kde_data[median_col]
-    median_data_list.append(median_data)
-    count_data = kde_data[count_col]
-    count_data_list.append(count_data)
-    sns.kdeplot(median_data, count_data, shade=True,
-                shade_lowest=False, ax=kde_axis, label=condition)
+    sns.barplot(
+        x=duration_col,
+        y=no_ep_col,
+        hue=condition_col,
+        data=curr_data_hist,
+        ax=curr_axis_hist,
+        capsize=capsize,
+        errwidth=errwidth,
+        ci=sem,
+        dodge=dodge
+    )
+    sns.swarmplot(
+        x=duration_col,
+        y=no_ep_col,
+        hue=condition_col,
+        color='k',
+        data=curr_data_hist,
+        ax=curr_axis_hist,
+        size=marker_size,
+        dodge=dodge
+    )
     
-    # label with condition
-    kde_axis.text(1, 0.5, condition, rotation=270, color='k',
-                  transform=kde_axis.transAxes)
-    # tidy up axis
-    kde_axis.set(xlim=kde_ylim,
-                 ylim=kde_xlim,
-                 ylabel=kde_ylabel)
-    if condition != conditions[-1]:
-        kde_axis.set(xlabel=[],
-                     xticklabels="")
-    if condition == conditions[0]:
-        kde_axis.set(title=kde_title)
-kde_axis.set(xlabel=kde_xlabel)
-
-fig.suptitle(title)
+    curr_leg_hist = curr_axis_hist.legend()
+    curr_leg_hist.remove()
 
 fig.set_size_inches(11.69, 8.27)
 
 plt.savefig(save_fig, dpi=600)
+
+plt.close('all')
