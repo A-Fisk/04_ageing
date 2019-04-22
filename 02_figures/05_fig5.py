@@ -182,7 +182,10 @@ split_df = all_df.groupby(
 ).apply(
     split_in_groupby
 )
-split_df_hourly = split_df.groupby(
+
+act_split_clean = activity_split.copy()
+act_split_clean.index = act_split_clean.index.droplevel(0)
+split_df_hourly = act_split_clean.groupby(
     level=[0, 1]
 ).resample(
     "H",
@@ -191,9 +194,9 @@ split_df_hourly = split_df.groupby(
 ).mean()
 split_daily_mean = split_df_hourly.mean(axis=1)
 split_daily_tidy = split_daily_mean.unstack(level=1)
-split_daily_calc = split_daily_tidy.drop("LDR", axis=1)
+# split_daily_calc = split_daily_tidy.drop("LDR", axis=1)
 
-rel_amp = split_daily_calc.groupby(
+rel_amp = split_daily_tidy.groupby(
     level=0
 ).apply(
     als.relative_amplitude
@@ -201,18 +204,18 @@ rel_amp = split_daily_calc.groupby(
 rel_amp_long = longform_df(rel_amp, col_names)
 
 # Calculate total activity per day
-tot_act_days = calc_df.groupby(
-    level=0
+tot_act_days = act_split_clean.groupby(
+    level=[0, 1]
 ).resample(
     "D",
-    level=1
+    level=2
 ).sum()
 tot_act_days[tot_act_days == 0] = np.nan
-tot_act = tot_act_days.groupby(
-    level=0
-).mean()
+tot_act = tot_act_days.mean(axis=1)
+tot_act.index = tot_act.index.droplevel(2)
+tot_act_long = tot_act.reset_index()
+tot_act_long.columns = col_names
 # tot_act[tot_act == 0 ] = np.nan
-tot_act_long = longform_df(tot_act, col_names)
 
 # Bring together in a collection
 marker_dict = {
@@ -518,7 +521,7 @@ xfmt = mdates.DateFormatter("%H:%M")
 fontsize_time = 8
 
 for condition in conditions:
-    curr_data_wave = split_daily_calc.loc[condition]
+    curr_data_wave = split_daily_tidy.loc[condition]
     curr_data_mean = curr_data_wave.mean(axis=1)
     curr_data_sem = curr_data_wave.sem(axis=1)
     
@@ -581,7 +584,9 @@ capsize_totals = 5
 
 for condition in conditions:
     curr_data_total = tot_act_days.loc[condition]
-    curr_data_total = curr_data_total.iloc[1:].copy()
+    curr_data_total = curr_data_total.iloc[1:, :-1].copy()
+    curr_data_total.index = curr_data_total.index.droplevel(1)
+    curr_data_total = curr_data_total.T
     curr_tot_mean = curr_data_total.mean(axis=1)
     curr_tot_sem = curr_data_total.sem(axis=1)
     
@@ -593,12 +598,12 @@ for condition in conditions:
     )
 
 # Tidy axes
-curr_axis_total.set_xlim(
-    curr_data_total.index[0] - pd.Timedelta('1D'),
-    curr_data_total.index[-1] + pd.Timedelta("1D")
-)
+# curr_axis_total.set_xlim(
+#     curr_data_total.index[0] - pd.Timedelta('1D'),
+#     curr_data_total.index[-1] + pd.Timedelta("1D")
+# )
 total_xticks = curr_data_total.index[::4]
-total_xticklabels = [(x - total_xticks[0]).days for x in total_xticks]
+total_xticklabels = [(x - total_xticks[0]) for x in total_xticks]
 curr_axis_total.set_xticks(total_xticks)
 curr_axis_total.set_xticklabels(total_xticklabels)
 curr_axis_total.ticklabel_format(
