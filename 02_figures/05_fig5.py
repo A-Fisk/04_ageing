@@ -57,16 +57,20 @@ light_df.index = light_df.index.droplevel(1)
 all_df = light_df.copy()
 
 # remove first 7 days of DD and PIR "8"
+dlan_lights_on = pd.Timestamp("2017-12-22 03:55:50")
 all_df = all_df.loc[
-         idx[:,
-         (all_df.index.get_level_values(1)[0] + pd.Timedelta("14D")):],
+    idx[:, dlan_lights_on.round("T"):"2019"],
     :
 ]
+#all_df = all_df.loc[
+#          idx[:,
+#          (all_df.index.get_level_values(1)[0] + pd.Timedelta("14D")):],
+#     :
+# ]
 
 # constants
 conditions = all_df.index.get_level_values(0).unique()
 
-# remove the first 14 days so all re-entrained
 dlan_lights_on = pd.Timestamp("2017-12-22 03:55:50")
 all_df = all_df.loc[
     idx[:, dlan_lights_on.round("T"):"2019"],
