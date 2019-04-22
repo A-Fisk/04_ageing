@@ -67,7 +67,11 @@ all_df = all_df.loc[
 conditions = all_df.index.get_level_values(0).unique()
 
 # remove the first 14 days so all re-entrained
-
+dlan_lights_on = pd.Timestamp("2017-12-22 03:55:50")
+all_df = all_df.loc[
+    idx[:, dlan_lights_on.round("T"):"2019"],
+    :
+]
 # find out how much sj is delayed by
 # all_lights_on = all_df[all_df.loc[:, "LDR"] > 100]
 # dlan_lights_on = all_lights_on.loc["DLAN"].first_valid_index()
