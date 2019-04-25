@@ -81,17 +81,48 @@ df_list_single = [
 ]
 df_dict_single = dict(zip(names_single, df_list_single))
 all_df_single = pd.concat(df_dict_single, sort=False)
+
+# PIRS 6-11 look like they had LL for a few weeks from the actograms
+# No notes to support what actually happened but unsure so excluding
+all_df_single.loc[idx["LD"], "7":"12"] = np.nan
+all_df_single.loc[idx["SJ"], "10"] = np.nan
+
+# Split into LD and DD portions
 exp_data_ld = all_df_single.loc[idx[:, "ld", :],  :"12"]
 exp_data_ld.index = exp_data_ld.index.droplevel(1)
 exp_data_dd = all_df_single.loc[idx[:, "dd", :], :"12"]
 exp_data_dd.index = exp_data_dd.index.droplevel(1)
 
+# remove first 7 days of DD and PIR "8"
+exp_data_dd = exp_data_dd.loc[
+    idx[:, (exp_data_dd.index.get_level_values(1)[0] + pd.Timedelta("14D")):],
+    :
+]
+exp_data_dd.loc[idx["SJ"], ["8", "10"]] = np.nan
+
+# manual mean groupby currently uses a three level multi-index
+# going to artificially turn DD into higher multi-index rather
+# than rewrite
+dd_dict = {"level_1": exp_data_dd}
+dd_df_1 = pd.concat(dd_dict)
+dd_dict_2 = {"level_2": dd_df_1}
+dd_df_2 = pd.concat(dd_dict_2)
+dd_df_3 = dd_df_2.stack().reorder_levels([0, 1, 2, 4, 3])
 
 all_data_dict = {
     "Group_housed": exp_data,
     "Single LD": exp_data_ld,
     "Single DD": exp_data_dd
 }
+
+periods_file = pathlib.Path(
+    "/Users/angusfisk/Documents/01_PhD_files/01_projects/01_thesisdata/"
+    "04_ageing/03_analysisoutputs/01_figures/00_csvs/05_fig5/01_ddperiods.csv"
+)
+period_df = pd.read_csv(periods_file, index_col=[0, 1], parse_dates=True)
+period_df_timedelta = pd.to_timedelta(period_df.stack()).unstack()
+period_dict = {"level_2": period_df_timedelta}
+period_df_1 = pd.concat(period_dict)
 
 ### Step 2 calculate length per day and count per day
 # Get the number and mean duration for each day then take the mean for each
@@ -112,6 +143,8 @@ hist_cols = [
     "Number of Episodes"
 ]
 
+
+
 for data_type_curr, exp_data_curr in zip(all_data_dict.keys(),
                                          all_data_dict.values()):
     mean_inday_data = exp_data_curr.groupby(
@@ -120,13 +153,37 @@ for data_type_curr, exp_data_curr in zip(all_data_dict.keys(),
         "D",
         level=1
     ).mean()
-    mean_data = mean_inday_data.groupby(level=0).mean()
     
     bool_data = (exp_data_curr > 0).astype(bool)
     count_inday_data = bool_data.groupby(level=0).resample("D", level=1).sum()
+
+    # print(mean_inday_data.head(), count_inday_data.head())
+    if data_type_curr == list(all_data_dict.keys())[-1]: # if DD
+        mean_inday_data = prep.manual_resample_mean_groupby(
+            dd_df_3,
+            period_df_1,
+            mean=True,
+            sum=False,
+        )
+        bool_data = (dd_df_3 > 0).astype(bool)
+        count_inday_data = prep.manual_resample_mean_groupby(
+            bool_data,
+            period_df_1,
+            mean=False,
+            sum=True
+        )
+        mean_inday_data.index = mean_inday_data.index.droplevel([0, 1])
+        mean_inday_data = mean_inday_data.unstack(level=1)
+        count_inday_data.index = count_inday_data.index.droplevel([0, 1])
+        count_inday_data = count_inday_data.unstack(level=1)
+    
+    mean_data = mean_inday_data.groupby(level=0).mean()
     count_inday_data.replace(0, np.nan, inplace=True)
     count_data = count_inday_data.groupby(level=0).mean()
 
+    # print(mean_inday_data.head(), count_inday_data.head())
+    # print(mean_data.head(), count_data.head())
+    
     long_mean = longform(mean_data, mean_cols)
     long_count = longform(count_data, count_cols)
 
@@ -259,7 +316,15 @@ for curr_data_group in all_data_dict.keys():
         
         curr_frag_leg = curr_axis_frag.legend()
         curr_frag_leg.remove()
-
+        # set the title
+        if curr_frag_type == list(frag_axes_dict.keys())[0]:
+            curr_axis_frag.text(
+                0.5,
+                1.1,
+                curr_data_group,
+                transform=curr_axis_frag.transAxes,
+                ha='center'
+            )
 
 ###### Histogram plot
 # create histogram axis - singular
@@ -307,6 +372,8 @@ for data_type_curr, curr_axis_hist in zip(all_data_dict.keys(), hist_axes):
     
     curr_leg_hist = curr_axis_hist.legend()
     curr_leg_hist.remove()
+    if data_type_curr != list(all_data_dict.keys())[0]:
+        curr_axis_hist.set_ylabel("")
 
 fig.set_size_inches(11.69, 8.27)
 
