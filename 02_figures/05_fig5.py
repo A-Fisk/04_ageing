@@ -217,13 +217,6 @@ marker_dict = {
     "Total activity": tot_act_long
 }
 
-# Values for total activity per day ############################################
-
-# get the values
-daily = all_df.groupby(level=0).resample("D", level=1).mean()
-daily.drop("LDR", axis=1, inplace=True)
-daily_mean = daily.mean(axis=1).unstack(level=0)
-daily_sem = daily.sem(axis=1).unstack(level=0)
 ################################################################################
 # # compute the mean waveforms
 #
