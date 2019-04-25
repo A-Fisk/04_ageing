@@ -109,12 +109,15 @@ power_long = longform_df(power_vals, col_names)
 
 # Calculate IS
 # get number of days and divide power_vals by that
-timespan = (
-    calc_df.loc[conditions[0]].index[-1] -
-    calc_df.loc[conditions[0]].index[0]
-).round("D").days
-interdaily_stab = power_vals / timespan
-is_long = longform_df(interdaily_stab, col_names)
+interdaily_stab_dict = {}
+for condition in conditions:
+    curr_timespan = len(calc_df.loc[condition])
+    curr_power_vals = power_vals.loc[condition]
+    curr_is = curr_power_vals / curr_timespan
+    interdaily_stab_dict[condition] = curr_is
+interdaily_stab = pd.concat(interdaily_stab_dict)
+is_long = interdaily_stab
+is_long.columns = col_names
 
 
 # Calculate IV
@@ -417,6 +420,7 @@ for marker, curr_ax_marker in zip(marker_dict.keys(), marker_axes):
         errwidth=errwidth,
         legend=False,
         order=condition_order,
+        hue_order=condition_order,
         ci=sem
     )
     sns.swarmplot(
@@ -474,6 +478,7 @@ curr_axis_wave = wave_axes[0]
 
 # Tidy wave constants
 wave_alpha = 0.5
+lights_alpha = 0.5
 dark_index = pd.DatetimeIndex(
     start="2010-01-01 12:00:00",
     end='2010-01-02 02:00:00',
@@ -484,7 +489,7 @@ end_index = pd.Timestamp("2010-01-02 00:00:00")
 xfmt = mdates.DateFormatter("%H:%M")
 fontsize_time = 8
 
-for condition in conditions:
+for condition in condition_order:
     curr_data_wave = split_daily_calc.loc[condition]
     curr_data_mean = curr_data_wave.mean(axis=1)
     curr_data_sem = curr_data_wave.sem(axis=1)
@@ -546,7 +551,7 @@ curr_axis_total = total_axes[0]
 bins_per_day = 8640
 capsize_totals = 5
 
-for condition in conditions:
+for condition in condition_order:
     curr_data_total = tot_act_days.loc[condition]
     curr_data_total = curr_data_total.iloc[1:].copy()
     curr_tot_mean = curr_data_total.mean(axis=1)
