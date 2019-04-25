@@ -51,17 +51,19 @@ all_df.loc[idx["SJ"], ["10", "8"]] = np.nan
 
 
 
-# JUST use LD for now? - redo as new figure for DD
+# just use DD
 light_df = all_df.loc[idx[:, "dd", :], :].copy()
 light_df.index = light_df.index.droplevel(1)
 all_df = light_df.copy()
 
-# remove first 7 days of DD and PIR "8"
+# shift to start of first cycle
 dlan_lights_on = pd.Timestamp("2017-12-22 03:55:50")
 all_df = all_df.loc[
     idx[:, dlan_lights_on.round("T"):"2019"],
     :
 ]
+
+# shift sj later
 #all_df = all_df.loc[
 #          idx[:,
 #          (all_df.index.get_level_values(1)[0] + pd.Timedelta("14D")):],
@@ -171,26 +173,6 @@ light_act_long = light_act_anim_mean.reset_index()
 light_act_long.columns = col_names
 
 # Calculate Relative Amplitude on hourly daily mean
-def split_in_groupby(test_df, **kwargs):
-    curr_split_dict = {}
-    for animal_no, animal_label in enumerate(test_df.columns):
-        curr_split = prep.split_dataframe_by_period(
-            test_df,
-            animal_number=animal_no,
-            drop_level=True,
-            reset_level=False
-        )
-        curr_split_dict[animal_label] = curr_split
-    curr_split_df = pd.concat(curr_split_dict)
-    
-    return curr_split_df
-
-split_df = all_df.groupby(
-    level=0
-).apply(
-    split_in_groupby
-)
-
 act_split_clean = activity_split.copy()
 act_split_clean.index = act_split_clean.index.droplevel(0)
 split_df_hourly = act_split_clean.groupby(
