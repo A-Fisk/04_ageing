@@ -44,6 +44,11 @@ df_list = [prep.read_file_to_df(x, index_col=[0, 1]) for x in files]
 df_dict = dict(zip(file_names, df_list))
 all_df = pd.concat(df_dict, sort=False)
 
+# PIRS 6-11 look like they had LL for a few weeks from the actograms
+# No notes to support what actually happened but unsure so excluding
+all_df.loc[idx["LD"], "7":"12"] = np.nan
+all_df.loc[idx["SJ"], "10"] = np.nan
+
 # JUST use LD for now? - redo as new figure for DD
 light_df = all_df.loc[idx[:, "ld", :], :].copy()
 light_df.index = light_df.index.droplevel(1)
@@ -52,22 +57,20 @@ all_df = light_df.copy()
 # constants
 conditions = all_df.index.get_level_values(0).unique()
 
-# remove the first 14 days so all re-entrained
-
 # find out how much sj is delayed by
 all_lights_on = all_df[all_df.loc[:, "LDR"] > 100]
 dlan_lights_on = all_lights_on.loc["DLAN"].first_valid_index()
 sj_lights_on = all_lights_on.loc["SJ"].first_valid_index()
 ld_lights_on = all_lights_on.loc["LD"].first_valid_index()
-# shift_amount = len(
-#     all_df.loc[
-#         idx["SJ", sj_lights_on.round("T"):dlan_lights_on.round("T")],
-#         :
-#     ]
-# )
-# sj_shifted = all_df.loc["SJ"].shift(shift_amount)
+shift_amount = len(
+    all_df.loc[
+        idx["SJ", dlan_lights_on.round("T"):sj_lights_on.round("T")],
+        :
+    ]
+)
+sj_shifted = all_df.loc["SJ"].shift(-shift_amount)
 # replace all df with shifted values
-# all_df.loc["SJ"].update(sj_shifted)
+all_df.loc["SJ"].update(sj_shifted)
 
 # shift start to the first lights on
 all_df = all_df.loc[
@@ -584,7 +587,7 @@ fig.legend(
 )
 
 fig.suptitle(
-    "Singly Housed Circadian Parameters"
+    "Singly Housed Circadian Parameters LD"
 )
 
 fig.set_size_inches(11.69, 8.27)

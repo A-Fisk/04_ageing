@@ -56,13 +56,24 @@ light_df = all_df.loc[idx[:, "dd", :], :].copy()
 light_df.index = light_df.index.droplevel(1)
 all_df = light_df.copy()
 
+# shift sj by an extra hour
+dlan_lights_on = pd.Timestamp("2018-02-16 03:55:50")
+sj_lights_on = pd.Timestamp("2018-02-16 04:55:30")
+shift_amount = len(
+    all_df.loc[
+        idx["SJ", dlan_lights_on.round("T"):sj_lights_on.round("T")],
+        :
+    ]
+)
+sj_shifted = all_df.loc["SJ"].shift(-shift_amount)
+# replace all df with shifted values
+all_df.loc["SJ"].update(sj_shifted)
+
 # shift to start of first cycle
-dlan_lights_on = pd.Timestamp("2017-12-22 03:55:50")
 all_df = all_df.loc[
     idx[:, dlan_lights_on.round("T"):"2019"],
     :
 ]
-
 # shift sj later
 #all_df = all_df.loc[
 #          idx[:,
@@ -132,7 +143,6 @@ periodogram_power.columns = periodogram_power.columns.droplevel(1)
 power_vals = periodogram_power.groupby(level=0).max()
 power_long = longform_df(power_vals, col_names)
 
-
 # Calculate IS
 # get number of days and divide power_vals by that
 timespan = (
@@ -157,6 +167,8 @@ calc_df_list = [calc_df_1.loc["level_1"]]
 period_dict_1 = {"level_1": periods}
 period_df = pd.concat(period_dict_1)
 period_df[pd.isnull(period_df)] = pd.Timedelta("24H")
+periods_csv = save_dir / "00_csvs/05_fig5/01_ddperiods.csv"
+period_df.to_csv(periods_csv)
 
 activity_split = prep.split_list_with_periods(
     name_df=period_df,
