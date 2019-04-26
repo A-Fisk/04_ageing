@@ -12,6 +12,7 @@ import matplotlib.gridspec as gs
 import matplotlib.dates as mdates
 import seaborn as sns
 sns.set()
+import os
 import sys
 sys.path.insert(
     0,
@@ -47,8 +48,8 @@ all_df = pd.concat(df_dict, sort=False)
 # PIRS 6-11 look like they had LL for a few weeks from the actograms
 # No notes to support what actually happened but unsure so excluding
 all_df.loc[idx["LD"], "7":"12"] = np.nan
-all_df.loc[idx["SJ"], ["10", "8"]] = np.nan
-
+all_df.loc[idx["SJ"], ["10", "8"]] = np.nan # PIRs stopped working
+all_df.loc[idx["DLAN"], "4"] = np.nan # LS not picking up correct period
 
 
 # just use DD
@@ -74,42 +75,15 @@ all_df = all_df.loc[
     idx[:, dlan_lights_on.round("T"):"2019"],
     :
 ]
-# shift sj later
-#all_df = all_df.loc[
-#          idx[:,
-#          (all_df.index.get_level_values(1)[0] + pd.Timedelta("14D")):],
-#     :
-# ]
-
-# constants
-conditions = all_df.index.get_level_values(0).unique()
 
 dlan_lights_on = pd.Timestamp("2017-12-22 03:55:50")
 all_df = all_df.loc[
     idx[:, dlan_lights_on.round("T"):"2019"],
     :
 ]
-# find out how much sj is delayed by
-# all_lights_on = all_df[all_df.loc[:, "LDR"] > 100]
-# dlan_lights_on = all_lights_on.loc["DLAN"].first_valid_index()
-# sj_lights_on = all_lights_on.loc["SJ"].first_valid_index()
-# ld_lights_on = all_lights_on.loc["LD"].first_valid_index()
-# shift_amount = len(
-#     all_df.loc[
-#         idx["SJ", sj_lights_on.round("T"):dlan_lights_on.round("T")],
-#         :
-#     ]
-# )
-# sj_shifted = all_df.loc["SJ"].shift(shift_amount)
-# replace all df with shifted values
-# all_df.loc["SJ"].update(sj_shifted)
 
-# shift start to the first lights on
-# all_df = all_df.loc[
-#     idx[:, dlan_lights_on.round("T"):"2019"],
-#     :
-# ]
-
+# constants
+conditions = all_df.index.get_level_values(0).unique()
 
 ############ Calculate Markers  ################################################
 
@@ -152,7 +126,7 @@ for condition in conditions:
     curr_is = curr_power_vals / curr_timespan
     interdaily_stab_dict[condition] = curr_is
 interdaily_stab = pd.concat(interdaily_stab_dict)
-is_long = interdaily_stab
+is_long = interdaily_stab.reset_index()
 is_long.columns = col_names
 
 # Calculate IV
@@ -199,6 +173,14 @@ split_df_hourly = act_split_clean.groupby(
 split_daily_mean = split_df_hourly.mean(axis=1)
 split_daily_tidy = split_daily_mean.unstack(level=1)
 # split_daily_calc = split_daily_tidy.drop("LDR", axis=1)
+split_relabel = split_daily_tidy.groupby(
+    level=0
+).apply(
+    prep.label_anim_cols
+).stack().reorder_levels([0, 2, 1])
+split_colnames = [col_names[0], col_names[1], "Hour", col_names[2]]
+split_relabel = split_relabel.reset_index()
+split_relabel.columns = split_colnames
 
 rel_amp = split_daily_tidy.groupby(
     level=0
@@ -219,7 +201,17 @@ tot_act = tot_act_days.mean(axis=1)
 tot_act.index = tot_act.index.droplevel(2)
 tot_act_long = tot_act.reset_index()
 tot_act_long.columns = col_names
-# tot_act[tot_act == 0 ] = np.nan
+
+# tidy for stats too
+tot_relabel = tot_act_days.iloc[:, :-1].stack().unstack(level=1).groupby(
+    level=0
+).apply(
+    prep.label_anim_cols
+).stack()
+tot_relabel.index = tot_relabel.index.droplevel(1)
+tot_cols = [col_names[0], "Day", col_names[1], col_names[2]]
+tot_relabel = tot_relabel.reset_index()
+tot_relabel.columns = tot_cols
 
 # Bring together in a collection
 marker_dict = {
@@ -232,90 +224,110 @@ marker_dict = {
 }
 
 ################################################################################
-# # compute the mean waveforms
-#
-# # split each animal and create dataframe out of it
-# split_dict = {}
-# for anim_no, anim_label in enumerate(all_df.columns):
-#     temp_split = all_df.groupby(level=0
-#                                 ).apply(prep.split_dataframe_by_period,
-#                                         period="24H",
-#                                         animal_number=anim_no,
-#                                         reset_level=False)
-#     split_dict[anim_label] = temp_split
-# split_df = pd.concat(split_dict).reorder_levels([1, 0, 2]).sort_index()
-# split_df_h = split_df.groupby(level=[0, 1]).resample(
-#                                             "H", level=2).mean()
-#
-# ########## get the mean and sem values
-#
-# def create_mean_df(data, cols):
-#     """takes in the split df and returns means and sems in a df"""
-#     # find the mean and sem
-#     setup_df = data.unstack(level=1
-#                     ).reorder_levels([1, 0], axis=1
-#                         ).sort_index(axis=1).drop("LDR", axis=1)
-#     means = setup_df.mean(axis=1)
-#     sems = setup_df.sem(axis=1)
-#
-#     means_df = pd.concat([means, sems], axis=1)
-#     means_df.columns = cols
-#
-#     return means_df
-#
-# mean_cols = ["Means", "SEMS"]
-#
-# # shift the sj_post to line up with the lights of the rest
-# sj_fill_values = split_df_h.loc[idx["sj_post", :, "2010-01-01 00:00:00"], :]
-# # manual groupby to shift values up by one and fill in at the bottom
-# animals = split_df_h.index.get_level_values(1).unique()
-# group_list = []
-# for animal in animals:
-#     new_anim_df = split_df_h.loc[idx["sj_post", animal, :], :]
-#     anim_fill = sj_fill_values.loc[idx[:, animal, :], :]
-#     shifted_anim_df = new_anim_df.shift(-1)
-#     shifted_anim_df.iloc[-1] = anim_fill.values
-#     group_list.append(shifted_anim_df)
-# new_sj_post = pd.concat(group_list)
-# # set back in the main df
-# split_df_h.loc[idx["sj_post", :, :], :] = new_sj_post
-#
-# # grab the mean values for the total time, as well as the first and last weeks
-# first_week = split_df_h.iloc[:, :8]
-# last_week = split_df_h.iloc[:, -7:]
-#
-# total_mean = create_mean_df(split_df_h, mean_cols)
-# first_mean = create_mean_df(first_week, mean_cols)
-# last_mean = create_mean_df(last_week, mean_cols)
-#
-# # Grab the light values for mean plots
-# light_df = split_df_h.loc[idx["dlan_post", "LDR", :], :].reset_index(
-#                                                          level=(0, 1),
-#                                                          drop=True)
-# light_mask = light_df > 300
-# lights = light_df.where(light_mask, other=500)
-# lights = lights.mask(light_mask, other=0)
-# lights = lights.mean(axis=1)
-#
-#
+# stats
+
+condition_col = col_names[0]
+anim_col = col_names[1]
+dep_var = col_names[2]
+hours = split_daily_tidy.index.get_level_values(-1).unique()
+save_test_dir = pathlib.Path(
+    "/Users/angusfisk/Documents/01_PhD_files/"
+    "01_projects/01_thesisdata/04_ageing/"
+    "03_analysisoutputs/01_figures/00_csvs/02_fig2"
+)
+anova_str = "01_anova.csv"
+ph_str = "02_posthoc.csv"
+
+# Q1. Does the condition affect the marker value?
+# One way ANOVA Value ~ Protocol with PH value | protocol
+
+marker_test_dir = save_test_dir / "01_markers"
+
+marker_ph_dict = {}
+for marker_label, marker_df in zip(marker_dict.keys(), marker_dict.values()):
+    
+    print(marker_label)
+    # run anova
+    curr_anova_marker = pg.anova(
+        dv=dep_var,
+        between=condition_col,
+        data=marker_df
+    )
+    pg.print_table(curr_anova_marker)
+    
+    curr_ph_marker = pg.pairwise_tukey(
+        dv=dep_var,
+        between=condition_col,
+        data=marker_df
+    )
+    pg.print_table(curr_ph_marker)
+    marker_ph_dict[marker_label] = curr_ph_marker
+    
+    # save the files
+    label_test_dir = marker_test_dir / marker_label
+    if not os.path.exists(label_test_dir):
+        os.mkdir(label_test_dir)
+    curr_anova_marker.to_csv(label_test_dir / anova_str)
+    curr_ph_marker.to_csv(label_test_dir / ph_str)
+
+marker_ph_df = pd.concat(marker_ph_dict)
+    
+# Q2 Does the condition affect the mean activity profile?
+# Two way mixed anova of activity ~ condition*hour
+# followed by post-hoc test of activity ~ condition | hour
+hour_col = split_relabel.columns[2]
+mean_test_dir = save_test_dir / "02_mean_wave"
+if not os.path.exists(mean_test_dir):
+    os.mkdir(mean_test_dir)
+
+mean_anova = pg.mixed_anova(
+    dv=dep_var,
+    between=condition_col,
+    within=hour_col,
+    subject=anim_col,
+    data=split_relabel
+)
+pg.print_table(mean_anova)
+mean_anova_str = mean_test_dir / anova_str
+mean_anova.to_csv(mean_anova)
+
+mean_posthoc = prep.tukey_pairwise_ph(
+    split_relabel,
+    protocol_col=condition_col
+)
+mean_ph_str = mean_test_dir / ph_str
+mean_posthoc.to_csv(mean_ph_str)
 
 
-################################################################################
-# # stats
-#
-# stats_colnames = ["Protocol", "Hour", "Animal", "Value"]
-# protocol_col = stats_colnames[0]
-# anim_col = stats_colnames[2]
-# hour_col = stats_colnames[1]
-# dep_var = stats_colnames[3]
-# hours = split_df_h.index.get_level_values(-1).unique()
-#
-# save_test_dir = pathlib.Path("/Users/angusfisk/Documents/01_PhD_files/"
-#                              "01_projects/01_thesisdata/04_ageing/"
-#                              "03_analysisoutputs/01_figures/00_csvs/02_fig2")
-# anova_str = "01_anova.csv"
-# ph_str = "02_posthoc.csv"
-#
+# Q3 Does the condition affect the total activity per day
+# Two way mixed anova of activity ~ condition*day
+# Posthoc test of activity ~ conditin | day
+
+tot_day_col = tot_cols[1]
+tot_test_dir = save_test_dir / "03_total_activity"
+if not os.path.exists(tot_test_dir):
+    os.mkdir(tot_test_dir)
+
+
+tot_anova = pg.mixed_anova(
+    dv=dep_var,
+    between=condition_col,
+    within=tot_day_col,
+    subject=anim_col,
+    data=tot_relabel
+)
+pg.print_table(tot_anova)
+tot_anova_str = tot_test_dir / anova_str
+tot_anova.to_csv(tot_anova_str)
+
+tot_posthoc = prep.tukey_pairwise_ph(
+    tot_relabel,
+    protocol_col=condition_col,
+    hour_col=tot_day_col
+)
+tot_ph_str = tot_test_dir / ph_str
+tot_posthoc.to_csv(tot_ph_str)
+
 # # Q1. Is the mean activity profile different between groups?
 # # 2 way anova activity ~ protocol*hour with ph activity ~ protocol | hour
 #
@@ -481,6 +493,8 @@ for marker, curr_ax_marker in zip(marker_dict.keys(), marker_axes):
     if marker != list(marker_dict.keys())[-1]:
         curr_ax_marker.set_xticklabels("")
         curr_ax_marker.set_xlabel("")
+    
+    # Add in stats - if significant at any level draw a line?
     
 fig.align_ylabels(marker_axes)
 marker_axes[0].text(
