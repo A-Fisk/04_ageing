@@ -139,7 +139,7 @@ hist_bin_cols = ["0-1", "1-10", "10-60", ">60"]
 hist_cols = [
     col_names[0],
     col_names[2],
-    "Episode Duration",
+    "Episode_Duration",
     "Number of Episodes"
 ]
 
@@ -206,20 +206,54 @@ for data_type_curr, exp_data_curr in zip(all_data_dict.keys(),
     
     
 # #### Stats #####################################################################
-#
-# stats_colnames = ["Protocol", "Day", "Animal", "Value"]
-# protocol_col = stats_colnames[0]
-# day_col = stats_colnames[1]
-# anim_col = stats_colnames[2]
-# dep_var = stats_colnames[3]
-# type_list = ["Median", "Count"]
-# save_test_dir = pathlib.Path("/Users/angusfisk/Documents/01_PhD_files/"
-#                              "01_projects/01_thesisdata/04_ageing/"
-#                              "03_analysisoutputs/01_figures/00_csvs/03_fig3")
-# anova_str = "01_anova.csv"
-# ph_str = "02_posthoc.csv"
-#
-# # run on test and count data
+
+condition_col = col_names[0]
+anim_col = col_names[2]
+dep_var = col_names[3]
+day_col = col_names[1]
+save_test_dir = pathlib.Path(
+    "/Users/angusfisk/Documents/01_PhD_files/"
+    "01_projects/01_thesisdata/04_ageing/"
+    "03_analysisoutputs/01_figures/00_csvs/02_fig2"
+)
+anova_str = "01_anova.csv"
+ph_str = "02_posthoc.csv"
+
+# Q1 Does the condition affect the number of duration of episodes?
+# One way anova of Count or Mean ~ condition
+# Post hoc of condition ~ Count or mean for each
+
+curr_label = list(all_data_dict.keys())[0]
+for curr_label in all_data_dict.keys():
+    curr_count = count_data_dict[curr_label]
+    curr_mean = mean_data_dict[curr_label]
+    curr_hist = hist_data_dict[curr_label]
+
+    count = count_cols[-1]
+    count_anova = pg.anova(
+        dv=count,
+        between=condition_col,
+        data=curr_count
+    )
+    pg.print_table(count_anova)
+
+    mean = mean_cols[-1]
+    mean_anova = pg.anova(
+        dv=mean,
+        between=condition_col,
+        data=curr_mean
+    )
+    pg.print_table(mean_anova)
+
+    duration_col = hist_cols[-2]
+    no_eps = hist_cols[-1]
+    hist_posthoc = prep.tukey_pairwise_ph(
+        curr_hist,
+        protocol_col=condition_col,
+        hour_col=duration_col,
+        dep_var=no_eps
+    )
+
 # for test_df, test_label in zip([mean_data, count_data], type_list):
 #     print(test_label)
 #     label_dir = save_test_dir / test_label
@@ -255,7 +289,7 @@ day_col = col_names[1]
 animal_col = col_names[2]
 mean_col = mean_cols[-1]
 count_col = count_cols[-1]
-
+order = ["LD", "DLAN", "SJ"]
 
 # Initialise the figure
 fig = plt.figure()
@@ -297,7 +331,9 @@ for curr_data_group in all_data_dict.keys():
         sns.pointplot(
             x=condition_col,
             y=curr_frag_type,
+            order=order,
             hue=condition_col,
+            hue_order=order,
             data=curr_data_frag,
             ax=curr_axis_frag,
             join=False,
@@ -308,6 +344,7 @@ for curr_data_group in all_data_dict.keys():
         sns.swarmplot(
             x=condition_col,
             y=curr_frag_type,
+            order=order,
             color='k',
             data=curr_data_frag,
             ax=curr_axis_frag,
@@ -352,6 +389,7 @@ for data_type_curr, curr_axis_hist in zip(all_data_dict.keys(), hist_axes):
         x=duration_col,
         y=no_ep_col,
         hue=condition_col,
+        hue_order=order,
         data=curr_data_hist,
         ax=curr_axis_hist,
         capsize=capsize,
@@ -363,6 +401,7 @@ for data_type_curr, curr_axis_hist in zip(all_data_dict.keys(), hist_axes):
         x=duration_col,
         y=no_ep_col,
         hue=condition_col,
+        hue_order=order,
         color='k',
         data=curr_data_hist,
         ax=curr_axis_hist,
