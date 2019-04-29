@@ -4,7 +4,7 @@
 ### Imports
 import pathlib
 import pandas as pd
-
+import os
 idx = pd.IndexSlice
 import numpy as np
 import pingouin as pg
@@ -22,6 +22,7 @@ sys.path.insert(0, "/Users/angusfisk/Documents/01_PhD_files/"
                    "07_python_package/actiPy")
 import actiPy.preprocessing as prep
 import actiPy.analysis as als
+import actiPy.plots as plot
 import actiPy.periodogram as per
 import actiPy.waveform as wave
 
@@ -223,8 +224,22 @@ ph_str = "02_posthoc.csv"
 # One way anova of Count or Mean ~ condition
 # Post hoc of condition ~ Count or mean for each
 
-curr_label = list(all_data_dict.keys())[0]
+mean_stats_dict = {}
+count_stats_dict = {}
+hist_stats_dict = {}
 for curr_label in all_data_dict.keys():
+    
+    marker_test_dir = save_test_dir / str(curr_label)
+    if not os.path.exists(marker_test_dir):
+        os.mkdir(marker_test_dir)
+    
+    count_dir = marker_test_dir / "01_count"
+    mean_dir = marker_test_dir / "02_mean"
+    hist_dir = marker_test_dir / "03_hist"
+    for dir in [count_dir, mean_dir, hist_dir]:
+        if not os.path.exists(dir):
+            os.mkdir(dir)
+    
     curr_count = count_data_dict[curr_label]
     curr_mean = mean_data_dict[curr_label]
     curr_hist = hist_data_dict[curr_label]
@@ -236,7 +251,16 @@ for curr_label in all_data_dict.keys():
         data=curr_count
     )
     pg.print_table(count_anova)
-
+    count_ph = pg.pairwise_tukey(
+        dv=count,
+        between=condition_col,
+        data=curr_count
+    )
+    pg.print_table(count_ph)
+    count_anova.to_csv(count_dir / anova_str)
+    count_ph.to_csv(count_dir / ph_str)
+    count_stats_dict[curr_label] = count_ph
+    
     mean = mean_cols[-1]
     mean_anova = pg.anova(
         dv=mean,
@@ -244,7 +268,16 @@ for curr_label in all_data_dict.keys():
         data=curr_mean
     )
     pg.print_table(mean_anova)
-
+    mean_ph = pg.pairwise_tukey(
+        dv=mean,
+        between=condition_col,
+        data=curr_mean
+    )
+    pg.print_table(mean_ph)
+    mean_anova.to_csv(mean_dir / anova_str)
+    mean_ph.to_csv(mean_dir / ph_str)
+    mean_stats_dict[curr_label] = mean_ph
+    
     duration_col = hist_cols[-2]
     no_eps = hist_cols[-1]
     hist_posthoc = prep.tukey_pairwise_ph(
@@ -253,32 +286,13 @@ for curr_label in all_data_dict.keys():
         hour_col=duration_col,
         dep_var=no_eps
     )
+    hist_posthoc.to_csv(hist_dir / ph_str)
+    hist_stats_dict[curr_label] = hist_posthoc
 
-# for test_df, test_label in zip([mean_data, count_data], type_list):
-#     print(test_label)
-#     label_dir = save_test_dir / test_label
-#     # tidy data
-#     label_df = test_df.groupby(level=0
-#                                ).apply(prep.label_anim_cols
-#                                        ).stack().reset_index()
-#     label_df.columns = stats_colnames
-#
-#     # run rm anova
-#     anova = pg.mixed_anova(dv=dep_var,
-#                            within=day_col,
-#                            between=protocol_col,
-#                            subject=anim_col,
-#                            data=label_df)
-#     pg.print_table(anova)
-#
-#     # run post hoc
-#     ph_df = prep.tukey_pairwise_ph(label_df,
-#                                    hour_col=day_col)
-#
-#     # save files
-#     anova.to_csv((label_dir / anova_str))
-#     ph_df.to_csv((label_dir / ph_str))
-#
+count_stats_df = pd.concat(count_stats_dict)
+mean_stats_df = pd.concat(mean_stats_dict)
+hist_stats_df = pd.concat(hist_stats_dict)
+
 
 ### Step 3 plot all ############################################################
 
@@ -379,6 +393,8 @@ no_ep_col = hist_cols[-1]
 
 dodge = 0.5
 
+yleveldlan = 0.9
+ylevelsj = 0.95
 # loop through each data type for each column.
 # Each condition = hue
 
@@ -413,6 +429,42 @@ for data_type_curr, curr_axis_hist in zip(all_data_dict.keys(), hist_axes):
     curr_leg_hist.remove()
     if data_type_curr != list(all_data_dict.keys())[0]:
         curr_axis_hist.set_ylabel("")
+
+    # add stats!!
+    ycoord_dlan = plot.sig_line_coord_get(curr_axis_hist, yleveldlan)
+    ycoord_sj = plot.sig_line_coord_get(curr_axis_hist, ylevelsj)
+    
+    # get xvalues
+    curr_ph = hist_stats_df.loc[data_type_curr]
+    xcoorddlan = plot.sig_locs_get(
+        curr_ph,
+        index_level2val=0,
+    )
+    xcoordsj = plot.sig_locs_get(
+        curr_ph, index_level2val=2
+    )
+    
+    label_loc_dict = plot.get_xtick_dict(curr_axis_hist)
+    
+    minus_val = 0.3
+    plot.draw_sighlines(
+        yval=ycoord_dlan,
+        sig_list=xcoorddlan,
+        label_loc_dict=label_loc_dict,
+        minus_val=minus_val,
+        plus_val=0,
+        color='C1',
+        curr_ax=curr_axis_hist
+    )
+    plot.draw_sighlines(
+        yval=ycoord_sj,
+        sig_list=xcoordsj,
+        label_loc_dict=label_loc_dict,
+        minus_val=minus_val,
+        plus_val=minus_val,
+        color='C2',
+        curr_ax=curr_axis_hist
+    )
 
 fig.set_size_inches(11.69, 8.27)
 

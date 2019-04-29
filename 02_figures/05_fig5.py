@@ -20,7 +20,7 @@ sys.path.insert(
     "07_python_package/actiPy"
 )
 import actiPy.preprocessing as prep
-import actiPy.actogram_plot as aplot
+import actiPy.plots as plot
 import actiPy.periodogram as per
 import actiPy.analysis as als
 
@@ -233,7 +233,7 @@ hours = split_daily_tidy.index.get_level_values(-1).unique()
 save_test_dir = pathlib.Path(
     "/Users/angusfisk/Documents/01_PhD_files/"
     "01_projects/01_thesisdata/04_ageing/"
-    "03_analysisoutputs/01_figures/00_csvs/02_fig2"
+    "03_analysisoutputs/01_figures/00_csvs/05_fig5"
 )
 anova_str = "01_anova.csv"
 ph_str = "02_posthoc.csv"
@@ -242,7 +242,9 @@ ph_str = "02_posthoc.csv"
 # One way ANOVA Value ~ Protocol with PH value | protocol
 
 marker_test_dir = save_test_dir / "01_markers"
-
+if not os.path.exists(marker_test_dir):
+    os.mkdir(marker_test_dir)
+    
 marker_ph_dict = {}
 for marker_label, marker_df in zip(marker_dict.keys(), marker_dict.values()):
     
@@ -271,7 +273,8 @@ for marker_label, marker_df in zip(marker_dict.keys(), marker_dict.values()):
     curr_ph_marker.to_csv(label_test_dir / ph_str)
 
 marker_ph_df = pd.concat(marker_ph_dict)
-    
+marker_ph_df.set_index(["A", "B"], append=True, inplace=True)
+
 # Q2 Does the condition affect the mean activity profile?
 # Two way mixed anova of activity ~ condition*hour
 # followed by post-hoc test of activity ~ condition | hour
@@ -289,7 +292,7 @@ mean_anova = pg.mixed_anova(
 )
 pg.print_table(mean_anova)
 mean_anova_str = mean_test_dir / anova_str
-mean_anova.to_csv(mean_anova)
+mean_anova.to_csv(mean_anova_str)
 
 mean_posthoc = prep.tukey_pairwise_ph(
     split_relabel,
@@ -328,89 +331,6 @@ tot_posthoc = prep.tukey_pairwise_ph(
 tot_ph_str = tot_test_dir / ph_str
 tot_posthoc.to_csv(tot_ph_str)
 
-# # Q1. Is the mean activity profile different between groups?
-# # 2 way anova activity ~ protocol*hour with ph activity ~ protocol | hour
-#
-# mean_test_dir = save_test_dir / "01_mean"
-# split_labels = ["Total", "First", "Last"]
-# for split_df, label in zip([split_df_h, first_week, last_week], split_labels):
-#     print(label)
-#     label_test_dir = mean_test_dir / label
-#     # tidy data
-#     test_df = split_df.mean(axis=1)
-#     test_df.drop("LDR", level=1, inplace=True)
-#     label_df = test_df.unstack(level=1
-#                                ).groupby(level=0
-#                                          ).apply(prep.label_anim_cols)
-#     tidy_df = label_df.stack().reset_index()
-#     tidy_df.columns = stats_colnames
-#     print(tidy_df.head())
-#
-#     # perform anova
-#     anova = pg.mixed_anova(dv=dep_var,
-#                            between=protocol_col,
-#                            within=hour_col,
-#                            subject=anim_col,
-#                            data=tidy_df)
-#     pg.print_table(anova)
-#
-#     # do post hocs
-#     ph_df = prep.tukey_pairwise_ph(tidy_df)
-#
-#     anova.to_csv((label_test_dir / anova_str))
-#     ph_df.to_csv((label_test_dir / ph_str))
-#
-#
-# # Q2. Does the condition affect Qp/IV/IS?
-# # 1 way anova of values for each
-#
-# marker_test_dir = save_test_dir / "02_markers"
-# for label, df in zip(marker_dict.keys(),
-#                      [power_vals, interdaily_stab, intraday_var]):
-#     print(label)
-#     marker_label_test_dir = marker_test_dir / label
-#     marker_df = df
-#     label_df = marker_df.groupby(level=0
-#                                  ).apply(prep.label_anim_cols
-#                                          ).stack(
-#                                                  ).reset_index()
-#     label_df.columns = [stats_colnames[x] for x in [0, 2, 3]]
-#     print(label_df.head())
-#
-#     # anova
-#     marker_anova = pg.anova(dv=dep_var,
-#                             between=protocol_col,
-#                             data=label_df)
-#     pg.print_table(marker_anova)
-#
-#     marker_anova.to_csv((marker_label_test_dir / anova_str))
-#
-# # Q3. Does the total activity change between groups?
-# # 2 way anova of activity ~ day*protocol with activity ~ protocol | day
-#
-# tot_act_test_dir = save_test_dir / "03_tot_act"
-# act_df = daily
-# label_df = act_df.groupby(level=0
-#                           ).apply(prep.label_anim_cols
-#                                   ).stack(
-#                                           ).reset_index()
-# label_df.columns = stats_colnames
-# print(label_df.head())
-#
-# # anova
-# activity_anova = pg.mixed_anova(dv=dep_var,
-#                                 between=protocol_col,
-#                                 within=hour_col,
-#                                 subject=anim_col,
-#                                 data=label_df)
-# pg.print_table(activity_anova)
-#
-# ph = prep.tukey_pairwise_ph(label_df)
-#
-# activity_anova.to_csv((tot_act_test_dir / anova_str))
-# ph.to_csv((tot_act_test_dir / ph_str))
-
-
 ################################################################################
 # plot
 
@@ -444,6 +364,10 @@ sem = 68
 # marker label constants
 ylabel_size = 10
 marker_title_size = 12
+
+# stats constants
+yleveldlan = 0.9
+ylevelsj = 0.95
 
 for marker, curr_ax_marker in zip(marker_dict.keys(), marker_axes):
     
@@ -495,6 +419,53 @@ for marker, curr_ax_marker in zip(marker_dict.keys(), marker_axes):
         curr_ax_marker.set_xlabel("")
     
     # Add in stats - if significant at any level draw a line?
+    
+    # add in stats
+    ycoordlan = plot.sig_line_coord_get(
+        curr_ax_marker,
+        yleveldlan
+    )
+    ycoordsj = plot.sig_line_coord_get(
+        curr_ax_marker,
+        ylevelsj
+    )
+    
+    # get x value from tests
+    curr_ph_marker = marker_ph_df.loc[idx[marker, :], :]
+    xcoorddlan = plot.sig_locs_get(
+        curr_ph_marker,
+        index_level2val=0,
+        index_levelget=2
+    )
+    xcoordsj = plot.sig_locs_get(
+        curr_ph_marker,
+        index_level2val=2,
+        index_levelget=3
+    )
+    
+    # get xdict to lookup
+    label_loc_dict = plot.get_xtick_dict(curr_ax_marker)
+    
+    # plot on the axis
+    plot.draw_sighlines(
+        yval=ycoordlan,
+        sig_list=xcoorddlan,
+        label_loc_dict=label_loc_dict,
+        minus_val=1,
+        plus_val=0,
+        color="C1",
+        curr_ax=curr_ax_marker
+    )
+    plot.draw_sighlines(
+        yval=ycoordsj,
+        sig_list=xcoordsj,
+        label_loc_dict=label_loc_dict,
+        minus_val=2,
+        plus_val=0,
+        color="C2",
+        curr_ax=curr_ax_marker
+    )
+    
     
 fig.align_ylabels(marker_axes)
 marker_axes[0].text(
@@ -549,7 +520,59 @@ for condition in condition_order:
         curr_data_mean + curr_data_sem,
         alpha=wave_alpha
     )
+  
+# add in stats
+# ycoords
+ycoord_dlan_wave = plot.sig_line_coord_get(curr_axis_wave, yleveldlan )
+ycoord_sj_wave = plot.sig_line_coord_get(curr_axis_wave, ylevelsj)
+
+# xcoords from marker
+sig_vals_dlan = plot.sig_locs_get(
+    mean_posthoc,
+    index_level2val=0,
+    index_levelget=0
+)
+sig_vals_sj = plot.sig_locs_get(
+    mean_posthoc,
+    index_level2val=2,
+    index_levelget=0
+)
+
+# plot xvals
+minus_val = pd.Timedelta("15M")
+xvals_dlan = [plot.get_xval_dates(
+    x,
+    minus_val=minus_val,
+    plus_val=minus_val,
+    curr_ax=curr_axis_wave
+) for x in sig_vals_dlan]
+xvals_sj = [plot.get_xval_dates(
+    x,
+    minus_val=minus_val,
+    plus_val=minus_val,
+    curr_ax=curr_axis_wave
+) for x in sig_vals_sj]
+
+for xval_pair in xvals_dlan:
+    xval_min = xval_pair[0]
+    xval_max = xval_pair[1]
+    curr_axis_wave.axhline(
+        ycoord_dlan_wave,
+        xmin=xval_min,
+        xmax=xval_max,
+        color="C1"
+    )
+for xval_pair in xvals_sj:
+    xval_min = xval_pair[0]
+    xval_max = xval_pair[1]
+    curr_axis_wave.axhline(
+        ycoord_sj_wave,
+        xmin=xval_min,
+        xmax=xval_max,
+        color='C2'
+    )
     
+   
 curr_axis_wave.fill_between(
     dark_index,
     500,
@@ -622,6 +645,49 @@ curr_axis_total.ticklabel_format(
     axis='y',
     scilimits=(0, 0)
 )
+
+
+
+# add in stats
+# ycoords
+ycoord_dlan_tot = plot.sig_line_coord_get(curr_axis_total, yleveldlan )
+ycoord_sj_tot = plot.sig_line_coord_get(curr_axis_total, ylevelsj)
+
+# xcoords from marker
+sig_vals_dlan = plot.sig_locs_get(
+    tot_posthoc,
+    index_level2val=0,
+    index_levelget=0
+)
+sig_vals_sj = plot.sig_locs_get(
+    tot_posthoc,
+    index_level2val=2,
+    index_levelget=0
+)
+
+# plot xvals
+minus_val = 0.5
+no_days = tot_act_days.columns[-1]
+label_loc_total = dict(zip(range(no_days), range(no_days)))
+plot.draw_sighlines(
+    yval=ycoord_dlan_tot,
+    sig_list=sig_vals_dlan,
+    label_loc_dict=label_loc_total,
+    minus_val=minus_val,
+    plus_val=minus_val,
+    color='C1',
+    curr_ax=curr_axis_total
+)
+plot.draw_sighlines(
+    yval=ycoord_sj_tot,
+    sig_list=sig_vals_sj,
+    label_loc_dict=label_loc_total,
+    minus_val=minus_val,
+    plus_val=minus_val,
+    color='C2',
+    curr_ax=curr_axis_total
+)
+
 curr_axis_total.set_xlabel(
     "Days"
 )

@@ -20,7 +20,7 @@ sys.path.insert(
     "07_python_package/actiPy"
 )
 import actiPy.preprocessing as prep
-import actiPy.actogram_plot as aplot
+import actiPy.plots as plot
 import actiPy.periodogram as per
 import actiPy.analysis as als
 
@@ -259,6 +259,7 @@ for marker_label, marker_df in zip(marker_dict.keys(), marker_dict.values()):
     curr_ph_marker.to_csv(label_test_dir / ph_str)
 
 marker_ph_df = pd.concat(marker_ph_dict)
+marker_ph_df.set_index(["A", "B"], append=True, inplace=True)
 
 # Q2 Does the condition affect the mean activity profile?
 # Two way mixed anova of activity ~ condition*hour
@@ -350,6 +351,10 @@ sem = 68
 ylabel_size = 10
 marker_title_size = 12
 
+# stats constants
+yleveldlan = 0.9
+ylevelsj = 0.95
+
 for marker, curr_ax_marker in zip(marker_dict.keys(), marker_axes):
     
     curr_marker_df = marker_dict[marker]
@@ -398,6 +403,52 @@ for marker, curr_ax_marker in zip(marker_dict.keys(), marker_axes):
     if marker != list(marker_dict.keys())[-1]:
         curr_ax_marker.set_xticklabels("")
         curr_ax_marker.set_xlabel("")
+        
+     # add in stats
+    ycoordlan = plot.sig_line_coord_get(
+        curr_ax_marker,
+        yleveldlan
+    )
+    ycoordsj = plot.sig_line_coord_get(
+        curr_ax_marker,
+        ylevelsj
+    )
+    
+    # get x value from tests
+    curr_ph_marker = marker_ph_df.loc[idx[marker, :], :]
+    xcoorddlan = plot.sig_locs_get(
+        curr_ph_marker,
+        index_level2val=0,
+        index_levelget=2
+    )
+    xcoordsj = plot.sig_locs_get(
+        curr_ph_marker,
+        index_level2val=2,
+        index_levelget=3
+    )
+    
+    # get xdict to lookup
+    label_loc_dict = plot.get_xtick_dict(curr_ax_marker)
+    
+    # plot on the axis
+    plot.draw_sighlines(
+        yval=ycoordlan,
+        sig_list=xcoorddlan,
+        label_loc_dict=label_loc_dict,
+        minus_val=1,
+        plus_val=0,
+        color="C1",
+        curr_ax=curr_ax_marker
+    )
+    plot.draw_sighlines(
+        yval=ycoordsj,
+        sig_list=xcoordsj,
+        label_loc_dict=label_loc_dict,
+        minus_val=2,
+        plus_val=0,
+        color="C2",
+        curr_ax=curr_ax_marker
+    )
     
 fig.align_ylabels(marker_axes)
 marker_axes[0].text(
@@ -453,6 +504,57 @@ for condition in condition_order:
         alpha=wave_alpha
     )
     
+# stats sig bars
+# ycoords
+ycoord_dlan_wave = plot.sig_line_coord_get(curr_axis_wave, yleveldlan )
+ycoord_sj_wave = plot.sig_line_coord_get(curr_axis_wave, ylevelsj)
+
+# xcoords from marker
+sig_vals_dlan = plot.sig_locs_get(
+    mean_posthoc,
+    index_level2val=0,
+    index_levelget=0
+)
+sig_vals_sj = plot.sig_locs_get(
+    mean_posthoc,
+    index_level2val=2,
+    index_levelget=0
+)
+
+# plot xvals
+minus_val = pd.Timedelta("15M")
+xvals_dlan = [plot.get_xval_dates(
+    x,
+    minus_val=minus_val,
+    plus_val=minus_val,
+    curr_ax=curr_axis_wave
+) for x in sig_vals_dlan]
+xvals_sj = [plot.get_xval_dates(
+    x,
+    minus_val=minus_val,
+    plus_val=minus_val,
+    curr_ax=curr_axis_wave
+) for x in sig_vals_sj]
+
+for xval_pair in xvals_dlan:
+    xval_min = xval_pair[0]
+    xval_max = xval_pair[1]
+    curr_axis_wave.axhline(
+        ycoord_dlan_wave,
+        xmin=xval_min,
+        xmax=xval_max,
+        color="C1"
+    )
+for xval_pair in xvals_sj:
+    xval_min = xval_pair[0]
+    xval_max = xval_pair[1]
+    curr_axis_wave.axhline(
+        ycoord_sj_wave,
+        xmin=xval_min,
+        xmax=xval_max,
+        color='C2'
+    )
+
 curr_axis_wave.fill_between(
     dark_index,
     500,
@@ -523,6 +625,59 @@ curr_axis_total.ticklabel_format(
     axis='y',
     scilimits=(0, 0)
 )
+
+# add in stats
+# ycoords
+ycoord_dlan_tot = plot.sig_line_coord_get(curr_axis_total, yleveldlan )
+ycoord_sj_tot = plot.sig_line_coord_get(curr_axis_total, ylevelsj)
+
+# xcoords from marker
+sig_vals_dlan = plot.sig_locs_get(
+    tot_posthoc,
+    index_level2val=0,
+    index_levelget=0
+)
+sig_vals_sj = plot.sig_locs_get(
+    tot_posthoc,
+    index_level2val=2,
+    index_levelget=0
+)
+
+# plot xvals
+minus_val = pd.Timedelta("12H")
+xvals_dlan = [plot.get_xval_dates(
+    x,
+    minus_val=minus_val,
+    plus_val=minus_val,
+    curr_ax=curr_axis_total,
+) for x in sig_vals_dlan]
+xvals_sj = [plot.get_xval_dates(
+    x,
+    minus_val=minus_val,
+    plus_val=minus_val,
+    curr_ax=curr_axis_total
+) for x in sig_vals_sj]
+
+for xval_pair in xvals_dlan:
+    xval_min = xval_pair[0]
+    xval_max = xval_pair[1]
+    curr_axis_total.axhline(
+        ycoord_dlan_tot,
+        xmin=xval_min,
+        xmax=xval_max,
+        color="C1"
+    )
+for xval_pair in xvals_sj:
+    xval_min = xval_pair[0]
+    xval_max = xval_pair[1]
+    curr_axis_total.axhline(
+        ycoord_sj_tot,
+        xmin=xval_min,
+        xmax=xval_max,
+        color='C2'
+    )
+    
+
 curr_axis_total.set_xlabel(
     "Days"
 )
